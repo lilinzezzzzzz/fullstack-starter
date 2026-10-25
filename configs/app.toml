@@ -1,0 +1,115 @@
+# Every application setting is required. Missing fields never receive code or environment defaults.
+# Relative paths are resolved from the project root, not this file's directory.
+data_dir = "data"
+database_filename = "app.sqlite3"
+backup_directory = "data/backups"
+frontend_dir = "frontend/dist"
+serve_frontend = true
+# Automatic cleaning is only allowed for the scaffold-owned frontend/dist directory.
+frontend_clean_output = true
+sqlite_timeout_seconds = 5.0
+allowed_hosts = ["127.0.0.1", "localhost", "::1"]
+allowed_origins = [
+  "http://127.0.0.1:18001", "http://localhost:18001",
+  "http://127.0.0.1:5173", "http://localhost:5173",
+]
+
+[application]
+title = "fullstack-starter"
+version = "0.1.0"
+docs_enabled = true
+redoc_enabled = true
+openapi_enabled = true
+docs_path = "/docs"
+redoc_path = "/redoc"
+openapi_path = "/openapi.json"
+
+[server]
+host = "127.0.0.1"
+port = 18001
+workers = 1
+graceful_shutdown_seconds = 10.0
+keep_alive_seconds = 5
+backlog = 2048
+# Zero explicitly means no concurrency limit.
+concurrency_limit = 0
+
+[database]
+journal_mode = "WAL"
+# SQLite durability policy; unrelated to synchronous/asynchronous ORM calls.
+synchronous = "FULL"
+pool_size = 5
+max_overflow = 10
+pool_timeout_seconds = 30.0
+
+[logging]
+directory = "logs"
+filename = "app.log"
+bootstrap_filename = "service.log"
+level = "INFO"
+format = "{time:YYYY-MM-DD HH:mm:ss.SSS Z} | {level: <8} | {extra[request_id]} | {message}"
+rotation = "10 MB"
+# Zero explicitly keeps every rotated file; no TOML null or implicit fallback is used.
+retention_days = 0
+compression = "none"
+serialize = false
+console = false
+request_logging = true
+
+[service]
+pid_file = "fullstack-starter.pid"
+startup_timeout_seconds = 15.0
+shutdown_timeout_seconds = 15.0
+inspection_timeout_seconds = 2.0
+readiness_poll_seconds = 0.05
+shutdown_poll_seconds = 0.1
+
+[vite]
+host = "127.0.0.1"
+port = 5173
+proxy_target = "http://127.0.0.1:18001"
+strict_port = true
+change_origin = true
+
+# Only this section and the application title/version are injected into the browser build.
+# Changing these values requires rebuilding the frontend.
+[client]
+request_timeout_seconds = 10.0
+query_stale_seconds = 30.0
+query_cache_seconds = 300.0
+query_retry_attempts = 1
+query_retry_delay_seconds = 1.0
+retry_min_status = 500
+retry_network_errors = true
+refetch_on_window_focus = false
+refetch_on_mount = true
+refetch_on_reconnect = true
+# Write retries remain disabled until a future project has an idempotency contract.
+mutation_retry_attempts = 0
+theme_primary_color = "#14675b"
+theme_border_radius = 10
+theme_font_size = 16
+theme_font_family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+
+[testing]
+temporary_directory = "/tmp"
+host = "127.0.0.1"
+termination_grace_seconds = 20.0
+command_timeout_seconds = 120.0
+keep_artifacts = false
+browser = "chromium"
+viewport_width = 1280
+viewport_height = 800
+mobile_width = 390
+mobile_height = 844
+workers = 1
+retries = 0
+test_timeout_seconds = 30.0
+expect_timeout_seconds = 5.0
+# Zero explicitly disables the per-action timeout.
+action_timeout_seconds = 0.0
+navigation_timeout_seconds = 30.0
+trace = "retain-on-failure"
+screenshot = "only-on-failure"
+fully_parallel = false
+reporter = "list"

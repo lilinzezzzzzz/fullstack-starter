@@ -1,0 +1,122 @@
+.pageShell {
+  min-block-size: 100svh;
+  max-inline-size: 1100px;
+  margin: auto;
+  padding: 2.5rem 3rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 650;
+  font-size: 1rem;
+}
+
+.brandMark {
+  display: grid;
+  place-items: center;
+  inline-size: 2.4rem;
+  block-size: 2.4rem;
+  border-radius: 10px;
+  background: #14675b;
+  color: white;
+  font-family: monospace;
+  font-size: 1.3rem;
+}
+
+.version {
+  margin-inline-start: auto;
+  font: 0.75rem monospace;
+  color: #6b786f;
+  border: 1px solid #d7dfd6;
+  padding: 0.25rem 0.5rem;
+  border-radius: 5px;
+}
+
+.main {
+  flex: 1;
+  display: grid;
+  align-items: center;
+  padding-block: 5rem;
+}
+
+.welcome {
+  max-inline-size: 720px;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.15em;
+  font-weight: 650;
+  color: #6f7e71;
+  margin-block-end: 1.25rem;
+}
+
+.heading {
+  font-size: clamp(3.25rem, 8vw, 5.5rem);
+  line-height: 1.08;
+  font-weight: 650;
+  letter-spacing: -0.055em;
+  margin: 0;
+}
+
+.heading span {
+  color: #247f70;
+}
+
+.intro {
+  margin-block: 1.5rem;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #657266;
+}
+
+.stack {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 1.5rem 2.75rem;
+}
+
+.stack li {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #dbe2d8;
+  border-radius: 6px;
+  background: #fafbf7;
+  font: 0.8rem monospace;
+  color: #4e6554;
+}
+
+.footer {
+  border-block-start: 1px solid #e0e5dc;
+  padding-block-start: 1.25rem;
+  font-size: 0.8rem;
+  color: #788277;
+}
+
+@media (max-width: 600px) {
+  .pageShell {
+    padding: 1.5rem;
+  }
+
+  .main {
+    padding-block: 4rem;
+  }
+
+  .intro {
+    font-size: 1rem;
+  }
+
+  .eyebrow {
+    font-size: 0.65rem;
+  }
+
+  .stack {
+    margin-block-end: 2rem;
+  }
+}

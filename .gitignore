@@ -1,0 +1,20 @@
+.env
+.secrets
+.DS_Store
+data/
+logs/
+*.pid
+*.pid.lock
+configs/*.local.toml
+# Deprecated private local files stay ignored, but are not loaded.
+configs/*.local.json
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+frontend/.pnpm-store/
+frontend/test-results/
+frontend/playwright-report/

@@ -1,0 +1,33 @@
+[project]
+name = "fullstack-starter-backend"
+version = "0.1.0"
+description = "A local FastAPI and SQLite scaffold"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "aiosqlite>=0.22,<1",
+    "alembic>=1.18,<2",
+    "fastapi>=0.135,<1",
+    "loguru>=0.7.3,<1",
+    "pydantic>=2.12,<3",
+    "sqlalchemy[asyncio]>=2.0.47,<2.1",
+    "uvicorn>=0.41,<1",
+]
+
+[dependency-groups]
+dev = ["httpx2>=2.16,<3", "pytest>=9,<10", "ruff>=0.15,<1", "tomli-w>=1.2,<2"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = ["integration: starts isolated local processes and requires ps and signal permissions"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
