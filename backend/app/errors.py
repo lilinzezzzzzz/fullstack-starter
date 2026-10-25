@@ -1,4 +1,5 @@
 import sqlite3
+from collections.abc import Mapping
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -24,13 +25,19 @@ def error_response(
     message: str,
     status_code: int,
     details: list[ErrorDetail] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "unavailable")
     body = ErrorResponse(code=code, message=message, details=details or [], request_id=request_id)
     return JSONResponse(
         status_code=status_code,
         content=body.model_dump(),
-        headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
+        headers={
+            **(headers if headers is not None else {}),
+            "X-Request-ID": request_id,
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -42,7 +49,12 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
         code = "NOT_FOUND" if exc.status_code == 404 else f"HTTP_{exc.status_code}"
-        return error_response(request, code, str(exc.detail), exc.status_code)
+        headers = {
+            key: value
+            for key, value in (exc.headers.items() if exc.headers is not None else ())
+            if key.lower() in {"allow", "www-authenticate", "retry-after"}
+        }
+        return error_response(request, code, str(exc.detail), exc.status_code, headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -62,7 +74,9 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-        logger.bind(request_id=getattr(request.state, "request_id", "unavailable")).opt(
-            exception=exc
-        ).error("Unhandled request error")
+        request_id = getattr(request.state, "request_id", "unavailable")
+        # The Exception handler runs outside RequestMiddleware when an error reaches
+        # ServerErrorMiddleware, so restore the request context just for this log.
+        with logger.contextualize(request_id=request_id):
+            logger.opt(exception=exc).error("Unhandled request error")
         return error_response(request, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试", 500)

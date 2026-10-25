@@ -34,6 +34,20 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 所有相对路径均相对于项目根目录，支持绝对路径。`data_dir`、数据库文件名、备份目录、日志目录和 PID 路径独立配置。修改数据目录时也需核对备份目录。
 
+随附配置使用 `.data/app.sqlite3` 保存数据库，使用 `.data/backups/` 保存备份；`.data/` 整体被 Git 忽略。相对路径的解析规则不因目录以点开头而改变。
+
+`service.pid_file` 随附值为 `.run/fullstack-starter.pid`，锁文件由该路径派生为 `.run/fullstack-starter.pid.lock`。运行操作会创建 PID 父目录，不新增锁路径字段；`.run/` 仅保存进程状态，整体被 Git 忽略并从生成项目中排除。切换路径前须用旧配置停服，并确认没有控制或迁移操作持锁。
+
+应用加载和项目生成共用 `backend/app/path_safety.py`：运行路径不得包含受保护源码，也不得落入其中；保护范围含 `backend/`、`frontend/`、`scripts/`、`configs/`、`docs/`、`.git/`、项目入口文件，以及遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录。只有公开输出允许位于 `frontend/dist/` 子树；私有目录与公开输出不能双向重叠。路径解析符号链接并折叠大小写后检查，避免 macOS 大小写不敏感文件系统上的别名绕过。自动清空仍仅允许实际的 `frontend/dist`；通过符号链接指向该目录外部时不允许自动清空。
+
+数据库文件、应用日志、bootstrap log 和 PID 文件必须指向不同路径；同一目录下的文件名相同也会被拒绝。`data_dir`、`backup_directory`、`logging.directory` 和 `service.pid_file` 还不得落入 `.venv/`、`node_modules/` 或 Python 缓存目录。
+
+`testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码或公开输出目录。E2E 强制使用本次临时目录中的构建、数据、日志和 PID，不复用日常产物。
+
+创建器保持标准库实现，只校验路径、源文件完整性和创建过程所需的关键字段；完整 Pydantic 字段、枚举和跨字段校验由生成项目的 `export-settings`、测试或首次启动执行。
+
+随附 `.gitignore` 覆盖默认路径和常见产物；自定义任意文件名或目录后仍需检查 Git 忽略规则。生成器仅为新项目补入配置路径，不会修改原模板的 `.gitignore`。
+
 ## 前后端配置流
 
 ```text
@@ -49,6 +63,8 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 
 后端参数修改后重启；前端运行参数和组件主题在构建时注入，修改后重新构建再刷新。Vite 开发模式重新启动开发服务器即可读取新值。
 
+`client.theme_*` 的范围是 Ant Design 组件。Hello 页面的品牌色、全局字体、页面排版和 CSS Modules 圆角属于固定视觉设计，不跟随组件主题参数；需要整体换肤时，应同步调整页面样式。
+
 ## 保留在代码中的固定契约
 
 配置化的边界是可调运行参数。以下内容属于协议、完整性或安全规则，固定在代码中：
@@ -60,6 +76,10 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 - 前端私有信息隔离、禁止通过配置绕过 PID 安全规则或把源代码/数据目录作为公开构建输出。
 - 源码/测试目录、生成文件名、测试用例数据、进程就绪协议、CLI 交换缓冲上限与秒/毫秒换算。
 - 第三方库尚未在本项目启用的功能，不额外制造配置项。
+
+FastAPI 原生 OpenTelemetry 的 tracing、metrics、logs、operation_spans 和 auto_configure 均在应用工厂中固定关闭，不新增 TOML 遥测字段，也不依赖卸载 SDK 或设置环境变量来维持关闭状态。业务项目确有需求时，再显式设计采集、脱敏、采样和导出设置；现有 Loguru 日志不受该关闭策略影响。[FastAPI 遥测配置](https://fastapi.tiangolo.com/advanced/opentelemetry/)
+
+SQLite 统一要求 3.51.3+，是针对 [WAL-reset 数据损坏修复](https://sqlite.org/wal.html#walresetbug)的数据完整性基线。官方虽为 3.44.6、3.50.7 提供回补，本脚手架暂不按旧分支或发行版补丁建立例外；DELETE 模式也使用相同基线。检查方式与 Python 升级方向见 README。
 
 错误响应的空详情列表、非请求日志的请求标识占位符和加载/错误文案属于协议或界面语义，不是配置缺失后的兜底参数。
 

@@ -27,13 +27,13 @@ def test_environment_and_dotenv_do_not_override_file(
 
 
 def test_all_paths_are_root_relative_and_database_filename_is_configurable(tmp_path: Path) -> None:
-    config = write_config(tmp_path, data_dir="data/custom", database_filename="custom.db")
+    config = write_config(tmp_path, data_dir=".data/custom", database_filename="custom.db")
     raw = read_config(config)
     raw["logging"]["directory"] = "logs/custom"
     raw["service"]["pid_file"] = "custom.pid"
     save_config(config, raw)
     settings = load_settings(config)
-    assert settings.database_path == PROJECT_ROOT / "data/custom/custom.db"
+    assert settings.database_path == PROJECT_ROOT / ".data/custom/custom.db"
     assert settings.logging.directory == PROJECT_ROOT / "logs/custom"
     assert settings.service.pid_file == PROJECT_ROOT / "custom.pid"
 

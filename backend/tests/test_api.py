@@ -1,6 +1,7 @@
 import pytest
 from fastapi import Query
 from fastapi.testclient import TestClient
+from starlette.exceptions import HTTPException
 
 from app.config import Settings
 from app.errors import AppError
@@ -17,6 +18,38 @@ def test_hello(client: TestClient, settings: Settings) -> None:
 
 def test_health_checks_database(client: TestClient) -> None:
     assert client.get("/api/health").json() == {"status": "ok", "database": "ok"}
+
+
+def test_method_not_allowed_preserves_allow_header(client: TestClient) -> None:
+    response = client.post("/api/v1/hello")
+    assert response.status_code == 405
+    assert response.headers["allow"] == "GET"
+    assert response.json()["code"] == "HTTP_405"
+
+
+@pytest.mark.parametrize(
+    ("status", "name", "value"),
+    [(401, "WWW-Authenticate", "Bearer"), (429, "Retry-After", "30")],
+)
+def test_http_error_preserves_protocol_headers_without_overriding_safety_headers(
+    settings: Settings, status: int, name: str, value: str
+) -> None:
+    app = create_app(settings)
+
+    @app.get("/api/protocol-error")
+    def fail() -> None:
+        raise HTTPException(
+            status,
+            headers={name: value, "Cache-Control": "public", "X-Request-ID": "untrusted"},
+        )
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        response = client.get("/api/protocol-error")
+    assert response.status_code == status
+    assert response.headers[name] == value
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-request-id"] != "untrusted"
 
 
 def test_unknown_api_has_uniform_error(client: TestClient) -> None:
@@ -51,6 +84,7 @@ def test_local_access_boundaries(
     assert response.status_code == status
     assert response.json()["code"] == code
     assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_vite_origin_is_allowed(client: TestClient, settings: Settings) -> None:
@@ -100,3 +134,8 @@ def test_unexpected_error_is_safe(settings: Settings, monkeypatch: pytest.Monkey
     assert response.json()["code"] == "INTERNAL_ERROR"
     assert "private implementation" not in response.text
     assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"] == "no-store"
+    contents = (settings.logging.directory / settings.logging.filename).read_text()
+    assert response.headers["x-request-id"] in contents
+    assert "Unhandled request error" in contents

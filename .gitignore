@@ -1,10 +1,17 @@
-.env
-.secrets
+.env*
+.secrets*
 .DS_Store
+.data/
+.run/
+# Keep legacy local data ignored after the default directory rename.
 data/
 logs/
 *.pid
 *.pid.lock
+*.log
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 configs/*.local.toml
 # Deprecated private local files stay ignored, but are not loaded.
 configs/*.local.json

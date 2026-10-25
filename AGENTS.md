@@ -13,5 +13,5 @@
 - Validate build settings through the same Python loader. Inject only public client settings and application title/version into the browser. Frontend setting changes require a rebuild.
 - Use Loguru for application and Uvicorn logs. Keep logs, databases, backups, PID files, dependencies, and build output out of Git.
 - Run one API worker. Control it through `scripts/service.sh`; record the actual service PID after readiness and verify process ownership before signalling. Never kill a process merely because it holds a port.
-- Tests use temporary TOML configuration, logs, PID files, and SQLite. Never use daily `data/` for validation. Preserve cancellation and close owned connections.
+- Tests use temporary TOML configuration, logs, PID files, and SQLite. Never use daily `.data/` for validation. Preserve cancellation and close owned connections.
 - Keep current architecture in `docs/design.md`, configuration boundaries in `docs/configuration.md`, commands in README, and dated verification evidence in `docs/history.md`. Record observed results only. Use the sh entrypoint for lifecycle and uv/pnpm for dependencies and checks.

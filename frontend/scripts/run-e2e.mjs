@@ -90,6 +90,9 @@ async function unusedPort() {
 }
 
 try {
+  settings.frontend_dir = join(workDir, 'dist');
+  settings.frontend_clean_output = false;
+  await writeFile(configFile, stringify(settings));
   await run(process.execPath, [packageCLI('typescript', 'bin/tsc'), '--noEmit'], {
     cwd: frontendRoot,
   });
@@ -101,7 +104,7 @@ try {
     `
 import { createViteSettings } from ${JSON.stringify(viteFactory)};
 import { readProjectSettings } from ${JSON.stringify(settingsReader)};
-export default createViteSettings(readProjectSettings(${JSON.stringify(source)}));
+export default createViteSettings(readProjectSettings(${JSON.stringify(configFile)}));
 `,
   );
   await run(

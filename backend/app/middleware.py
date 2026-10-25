@@ -62,7 +62,7 @@ class RequestMiddleware:
                 await self.app(scope, receive, send_response)
             finally:
                 if self.settings.logging.request_logging:
-                    logger.bind(request_id=request_id).info(
+                    logger.info(
                         "{} {} {} {:.1f}ms",
                         scope["method"],
                         scope["path"],

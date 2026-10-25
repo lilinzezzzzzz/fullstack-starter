@@ -19,6 +19,16 @@ V1 只有 Hello 欢迎页、Hello API 和 SQLite 健康检查。后端按 `route
 
 解释器版本见 `backend/.python-version` 和 `.node-version`。依赖由两份锁文件固定。SQLite 实际库版本至少为 3.51.3，本地验证版本为 3.53.1。使用 mise 时，可以通过 `mise exec node@24.22.0 -- pnpm ...` 选择正确的前端工具版本。
 
+SQLite 下限是数据完整性基线：3.51.3 修复了多个连接写入/checkpoint 时可能触发的 [WAL-reset 数据损坏问题](https://sqlite.org/wal.html#walresetbug)，并非 WAL 功能的首次支持版本。本脚手架对 WAL 和 DELETE 统一使用这条基线，不按发行版的回补补丁放宽版本号。
+
+检查 Python 实际链接的 SQLite，而非系统 `sqlite3` 命令的版本：
+
+```bash
+uv run --directory backend python -c 'import sqlite3; print(sqlite3.sqlite_version)'
+```
+
+版本不足时，安装链接到 SQLite 3.51.3+ 的 Python 3.14 构建，再用 uv 重建后端虚拟环境；仅更新 SQLite 命令行程序不会改变 Python 链接的库。
+
 ## 基于脚手架创建新项目
 
 ### 1. 用脚本生成
@@ -30,7 +40,7 @@ V1 只有 Hello 欢迎页、Hello API 和 SQLite 健康检查。后端按 `route
 ```bash
 sh scripts/create-project.sh \
   --name my-app \
-  --target-dir /Users/lilinze/Developer/local-workspace/my-app \
+  --target-dir /absolute/path/to/my-app \
   --port 18002 \
   --vite-port 5174
 ```
@@ -51,12 +61,15 @@ sh scripts/create-project.sh \
 
 - 复制源码、迁移、规则、文档、生成类型和两份锁文件；依据 `.gitignore` 排除数据、备份、日志、PID、依赖、缓存、构建产物和本地配置，并排除 `.git`、`.env*` 与 `.secrets*`。
 - 额外排除 TOML 指定的实际运行路径，并将新项目的运行路径补入副本 `.gitignore`，支持模板内的自定义目录。数据、备份、日志、PID 和前端输出路径必须在模板目录内；内部绝对路径会改为相对路径，避免指向原项目。模板外的这些路径会明确报错，需先调整模板配置。
+- 复制前复用应用的源码路径保护规则，并校验创建所需的关键字段；复制后按源文件树检查 API、路由、服务、迁移、sh 脚本、前端入口和项目元信息；缺少文件时创建失败，不报告成功。
 - 将后端项目名改为 `my-app-backend`，前端包名改为 `my-app-frontend`，应用标题改为 `my-app`，PID 文件改为原 PID 目录下的 `my-app.pid`。
 - 同步后端端口、Vite 端口、代理目标和允许来源。其余应用配置完整继承模板，保留 TOML 注释，不读取环境变量或补齐缺失配置。
 - 只更新 `uv.lock` 中本地虚拟项目的名称，并用 `uv lock --check --offline` 校验；第三方依赖版本、哈希和前端锁文件保持不变，创建时无需重新解析依赖源。
 - 更新新项目 README、设计文档中的项目名称和端口，为继承的验证记录注明来源。示例测试按应用标题和 Vite 配置断言，重命名后可直接运行。
 
 目标目录已存在（包括文件或符号链接）时直接拒绝覆盖；复制或配置调整失败时，清理本次新建的目标目录。sh 入口调用 [scripts/create_project.py](scripts/create_project.py) 处理结构化数据，仅依赖 Python 标准库和 rsync。
+
+创建器校验路径、源文件完整性，以及创建过程依赖的关键字段。由于它不引入应用依赖，完整 Pydantic 字段、枚举和跨字段校验由生成项目的 `export-settings`、测试或首次启动完成；创建器不会把明显无效的模板配置包装成成功项目。
 
 创建完成后会打印后续命令。新项目从空数据库开始，依赖、建库、构建、Git 和服务由下面的步骤分别准备；原项目的数据与服务不受创建操作影响。
 
@@ -65,7 +78,7 @@ sh scripts/create-project.sh \
 以下以 `my-app`、后端 `18002` 和 Vite `5174` 为例。先选择“技术栈”中固定的 Node.js、pnpm 版本，再进入新目录：
 
 ```bash
-cd /Users/lilinze/Developer/local-workspace/my-app
+cd /absolute/path/to/my-app
 uv sync --directory backend --frozen
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend api:types
@@ -83,7 +96,7 @@ sh scripts/service.sh status
 
 访问 [新项目欢迎页](http://127.0.0.1:18002/)，确认连接成功；[Hello API](http://127.0.0.1:18002/api/v1/hello) 应返回 `Hello, my-app!`，[健康检查](http://127.0.0.1:18002/api/health) 应显示数据库正常。运行路径以新项目自己的 TOML 为准。
 
-查看完成后停止服务，正常停止会清理 `my-app.pid`，`.pid.lock` 文件可以保留：
+查看完成后停止服务，正常停止会清理 `.run/my-app.pid`，`.run/my-app.pid.lock` 可以保留：
 
 ```bash
 sh scripts/service.sh stop
@@ -124,9 +137,13 @@ git status --short --untracked-files=all
 
 相对路径一律以项目根目录为基准，也支持绝对路径。配置文件选址是固定引导约定，和字段默认值不同；另选文件可传 `--config`。接口路径、PID 身份检查、事务完整性等固定契约保留在代码中，详见配置审查文档。
 
+运行目录不得与源码、配置、文档或 `.git` 重叠；前端仅允许 `frontend/dist` 子树作为 `frontend/` 内的输出位置。路径检查会解析符号链接、折叠大小写，并检查目录包含关系的两个方向；通过符号链接把 `frontend/dist` 指向外部时不允许自动清空。除源码外，遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录也受保护；数据库、应用日志、bootstrap log 和 PID 不得指向同一文件。
+
+FastAPI 原生 OpenTelemetry 在代码中显式关闭；环境变量和已有全局 provider 不会启用该功能。Loguru 应用、请求和 Uvicorn 日志仍按 TOML 工作。需要遥测的业务项目再显式引入配置、依赖和数据处理规则。
+
 前端构建需要后端依赖，以便使用同一校验器。仅 `client` 和应用标题/版本注入浏览器；服务端路径和完整配置不会打包。后端改配置后重启，前端参数改动后重新构建。外部工具的 PATH、缓存和测试浏览器位置不作为应用参数来源。
 
-随文件提供的运行设置为 18001 端口、根目录 `data/app.sqlite3`、`logs/app.log` 和 `fullstack-starter.pid`。保留日志设置为 `retention_days = 0`，表示不自动删除历史日志，不是缺项时的默认策略。
+随文件提供的运行设置为 18001 端口、根目录 `.data/app.sqlite3`、`logs/app.log` 和 `.run/fullstack-starter.pid`。保留日志设置为 `retention_days = 0`，表示不自动删除历史日志，不是缺项时的默认策略。
 
 修改 PID 路径前先停服务。启停使用启动时同一个配置文件路径。
 
@@ -164,6 +181,8 @@ sh scripts/service.sh stop
 
 服务控制实现在 [backend/tools/service_control.py](backend/tools/service_control.py)，sh 入口在后端环境中以 `python -m tools.service_control` 调用它。工具复用 `app` 的配置、日志和应用工厂，`app` 不反向导入工具代码。项目创建器放在根目录 `scripts/`，后端进程工具放在 `backend/tools/`。
 
+PID 默认保存在 `.run/fullstack-starter.pid`，操作锁自动派生为 `.run/fullstack-starter.pid.lock`，无需额外配置。启停或维护操作会创建父目录，`.run/` 整体被 Git 忽略，生成项目不复制其中的运行状态。更改 PID 路径前，先用旧配置停止服务并确认没有启停或迁移操作在进行，再切换配置和处理旧锁文件。
+
 - 真正监听成功后才记录实际服务 PID；重复启动返回当前 PID。
 - 发送 SIGTERM 前核对 PID 对应的模块和配置路径，不按端口批量杀进程。
 - 正常停止后删除 PID 文件；已停止时再次停止也能成功。
@@ -172,7 +191,9 @@ sh scripts/service.sh stop
 - `.pid.lock` 是控制操作的互斥锁文件，停止后可以保留，操作结束时内核锁已释放。
 - `status` 的退出码为 0（运行中）、3（已停止）或 1（检查失败）。
 
-默认日志保存在根目录 `logs/app.log`，由 Loguru 统一记录应用、请求标识和 Uvicorn 日志；`logs/service.log` 捕获导入或启动早期错误。诊断日志不打印局部变量。日志、PID 和数据库均被 Git 忽略。
+默认日志保存在根目录 `logs/app.log`，由 Loguru 统一记录应用、请求标识和 Uvicorn 日志；`logs/service.log` 捕获导入或启动早期错误。诊断日志不打印局部变量。随附运行目录、常见日志、PID、SQLite 文件及 WAL/SHM 辅助文件均被 Git 忽略；`.env*`、`.secrets*` 也保持忽略。
+
+直接修改模板或已有项目的运行路径时，应同步维护 `.gitignore`。生成器只会自动补充新副本的规则。使用 `git check-ignore --no-index <实际产物路径>` 核对，并在提交前检查 `git status --short --untracked-files=all`。
 
 后端维护和服务命令支持显式选择其他完整配置文件：
 
@@ -199,10 +220,14 @@ pnpm --dir frontend dev
 
 ## 数据库与备份
 
-随附配置的数据库位于项目根目录的 `data/app.sqlite3`；连接开启 WAL、外键、保守持久化设置和有限锁等待。初始迁移只有 `alembic_version`，没有业务表。
+随附配置的数据库位于项目根目录的 `.data/app.sqlite3`，备份目录为 `.data/backups/`；连接开启 WAL、外键、保守持久化设置和有限锁等待。初始迁移只有 `alembic_version`，没有业务表。`.data/` 是运行数据目录，保持 Git 忽略。
+
+升级已有数据库前先停止服务，审查迁移并按需备份；完成后再启动。`db-upgrade` 与启停共用互斥锁，有 PID 文件时拒绝迁移；陈旧或异常 PID 也不会被迁移命令删除，应通过同配置的 `service.sh stop` 核查处理。该保护针对脚本管理的服务，直接启动的 Uvicorn 或其他使用同一数据库的程序也必须先停止。
 
 ```bash
+sh scripts/service.sh stop
 uv run --directory backend python -m app.cli db-upgrade
+sh scripts/service.sh start
 uv run --directory backend python -m app.cli db-backup
 ```
 
@@ -256,12 +281,14 @@ pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test:e2e
 ```
 
-页面测试构建前端、生成临时 TOML 配置，并通过 `service.sh` 启停独立服务。覆盖真实 API 连通、页面刷新、加载、错误重试、键盘、窄屏和 404。成功时清理临时目录，失败时打印诊断位置。macOS 受限沙箱需允许 Chromium 和本机进程控制。
+页面测试将前端构建到本次临时目录的 `dist/`，使用临时 TOML、数据库、日志、PID 和独立服务，不清空或重建日常 `frontend/dist`。覆盖真实 API 连通、页面刷新、加载、错误重试、键盘、窄屏和 404。成功时清理临时目录，失败时打印诊断位置。macOS 受限沙箱需允许 Chromium 和本机进程控制。
 
-页面测试支持 `pnpm --dir frontend test:e2e --config /absolute/path/app.test.toml`，文件必须包含全部配置。构建输出使用该文件的 `frontend_dir`；验证期间要保留已有服务使用的产物时，将它指向独立临时目录并显式设置 `frontend_clean_output = false`。
+页面测试支持 `pnpm --dir frontend test:e2e --config /absolute/path/app.test.toml`，文件必须包含全部配置。入口文件提供应用和测试设置；运行器始终将构建输出、数据库、日志、PID 和服务端口替换为本次隔离值，临时构建目录设置 `frontend_clean_output = false`，整体由运行器清理。直接执行 `pnpm exec playwright test` 会立即提示使用 `test:e2e`，避免遗漏隔离服务和 `baseURL`。
 
 ## 替换 Hello 示例
 
 后端入口为 `routers/hello.py` → `services/hello.py` → `schemas/hello.py`；前端入口为 `pages/WelcomePage.tsx`，连接组件为 `components/ConnectionStatus.tsx`。
 
 新增业务时，在 `models/` 定义并导出模型，在 `schemas/` 定义接口，在 `services/` 通过 AsyncSession 管理异步业务和写入事务，在 `routers/` 注册 HTTP 路由。生成并审查 Alembic 迁移，再接入前端 `api/`、`hooks/` 和页面，更新生成类型及测试。复杂复用查询出现后再提取 DAO。
+
+索引与唯一约束的自动名称包含全部列。同一组列上的多个条件索引或表达式索引应显式命名。CheckConstraint 支持未命名建表；需要后续迁移管理时，应从首次定义起使用明确名称，例如 `CheckConstraint("quantity > 0", name="ck_items_positive_quantity")`。Alembic 的 autogenerate 不完整覆盖 CHECK 变更，必须人工审查和补齐迁移。

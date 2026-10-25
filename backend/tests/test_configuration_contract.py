@@ -7,9 +7,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
-from app.config import load_settings
+from app.config import PROJECT_ROOT, load_settings
 from app.database import create_database_engine, upgrade_database
 from app.main import create_app
+from app.path_safety import validate_runtime_paths
 from tests.helpers import read_config, save_config, write_config
 
 
@@ -149,4 +150,146 @@ def test_public_output_cannot_contain_private_storage(tmp_path: Path) -> None:
     data["frontend_dir"] = data["data_dir"]
     save_config(path, data)
     with pytest.raises(ValidationError, match="private data"):
+        load_settings(path)
+
+
+@pytest.mark.parametrize(
+    "destination", ["backend/app", "scripts", "docs", ".git", "frontend/public", ".", "README.md"]
+)
+def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -> None:
+    path = write_config(tmp_path, frontend_dir=destination)
+    with pytest.raises(ValidationError, match="protected project source"):
+        load_settings(path)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "data_dir",
+        "backup_directory",
+        "logging.directory",
+        "service.pid_file",
+        "testing.temporary_directory",
+    ],
+)
+def test_runtime_paths_cannot_use_source_directories(tmp_path: Path, field: str) -> None:
+    path = write_config(tmp_path)
+    data = read_config(path)
+    section, separator, name = field.partition(".")
+    if separator:
+        data[section][name] = "backend/app"
+    else:
+        data[field] = "backend/app"
+    save_config(path, data)
+    with pytest.raises(ValidationError, match="project source"):
+        load_settings(path)
+
+
+def test_output_alias_cannot_bypass_source_protection(tmp_path: Path) -> None:
+    alias = tmp_path / "source-alias"
+    alias.symlink_to(PROJECT_ROOT / "frontend/src", target_is_directory=True)
+    with pytest.raises(ValidationError, match="protected project source"):
+        load_settings(write_config(tmp_path, frontend_dir=str(alias)))
+
+
+def test_public_output_cannot_be_inside_private_storage(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path, data_dir=str(tmp_path / "storage"), frontend_dir=str(tmp_path / "storage/dist")
+    )
+    with pytest.raises(ValidationError, match="private data"):
+        load_settings(path)
+
+
+def test_clean_output_cannot_follow_symlink_outside_default_tree(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "output-alias"
+    alias.symlink_to(outside, target_is_directory=True)
+    path = write_config(
+        tmp_path,
+        frontend_dir=str(alias),
+        frontend_clean_output=True,
+    )
+    with pytest.raises(ValidationError, match="Automatic output cleaning"):
+        load_settings(path)
+
+
+def test_clean_output_rejects_symlinked_default_tree(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / "frontend").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / "frontend/dist").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="Automatic output cleaning"):
+        validate_runtime_paths(
+            project,
+            frontend_dir=project / "frontend/dist",
+            frontend_clean_output=True,
+            data_dir=project / "data",
+            backup_directory=project / "backups",
+            logging_directory=project / "logs",
+            pid_file=project / ".run/service.pid",
+            temporary_directory=tmp_path / "tmp",
+            database_filename="app.sqlite3",
+            logging_filename="app.log",
+            bootstrap_filename="service.log",
+        )
+
+
+@pytest.mark.parametrize("destination", ["Backend/app", "SCRIPTS", "DOCS", ".GIT", "LOGS", ".DATA"])
+def test_case_only_source_and_runtime_aliases_are_rejected(
+    tmp_path: Path, destination: str
+) -> None:
+    path = write_config(tmp_path, frontend_dir=destination)
+    with pytest.raises(ValidationError, match="protected project source"):
+        load_settings(path)
+
+
+@pytest.mark.parametrize("destination", ["data", ".run", ".venv"])
+def test_legacy_and_dependency_directories_cannot_be_public_output(
+    tmp_path: Path, destination: str
+) -> None:
+    path = write_config(tmp_path, frontend_dir=destination)
+    with pytest.raises(ValidationError, match="protected project source"):
+        load_settings(path)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "data_dir",
+        "logging.directory",
+        "service.pid_file",
+        "testing.temporary_directory",
+    ],
+)
+def test_case_only_source_aliases_are_rejected_for_runtime_paths(
+    tmp_path: Path, field: str
+) -> None:
+    path = write_config(tmp_path)
+    data = read_config(path)
+    section, separator, name = field.partition(".")
+    if separator:
+        data[section][name] = "Backend/app"
+    else:
+        data[field] = "Backend/app"
+    save_config(path, data)
+    with pytest.raises(ValidationError, match="project source"):
+        load_settings(path)
+
+
+def test_runtime_file_paths_must_not_collide(tmp_path: Path) -> None:
+    path = write_config(tmp_path)
+    data = read_config(path)
+    data["service"]["pid_file"] = str(Path(data["data_dir"]) / data["database_filename"])
+    save_config(path, data)
+    with pytest.raises(ValidationError, match="same file path"):
+        load_settings(path)
+
+    path = write_config(tmp_path / "logging-collision")
+    data = read_config(path)
+    data["logging"]["directory"] = data["data_dir"]
+    data["logging"]["filename"] = data["database_filename"]
+    save_config(path, data)
+    with pytest.raises(ValidationError, match="same file path"):
         load_settings(path)

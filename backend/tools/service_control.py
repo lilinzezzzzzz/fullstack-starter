@@ -2,14 +2,12 @@
 
 import argparse
 import asyncio
-import fcntl
 import os
 import select
 import signal
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from pathlib import Path
 
 import uvicorn
@@ -17,12 +15,9 @@ from loguru import logger
 
 from app.config import BACKEND_ROOT, CONFIG_FILE, Settings, load_settings, resolve_project_path
 from app.logging_setup import configure_logging
+from app.service_state import ServiceError, operation_lock
 
 SERVICE_MODULE = "tools.service_control"
-
-
-class ServiceError(RuntimeError):
-    pass
 
 
 def read_pid(path: Path) -> int | None:
@@ -72,20 +67,6 @@ def is_owned_process(pid: int, config_file: Path, inspection_timeout: float) -> 
     ):
         raise ServiceError(f"PID {pid} is not this service; PID file and process left untouched.")
     return True
-
-
-@contextmanager
-def operation_lock(pid_file: Path):
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    with pid_file.with_suffix(pid_file.suffix + ".lock").open("a") as handle:
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise ServiceError("Another service operation is in progress.") from exc
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def remove_pid(path: Path, expected: int) -> None:

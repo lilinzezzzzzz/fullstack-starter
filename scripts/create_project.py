@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import importlib.util
 import json
 import os
 import re
@@ -13,6 +14,21 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_path_policy():
+    # Load only the shared standard-library policy; creation needs no app dependencies.
+    spec = importlib.util.spec_from_file_location(
+        "scaffold_path_safety", PROJECT_ROOT / "backend/app/path_safety.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("The scaffold path policy is missing.")
+    policy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(policy)
+    return policy
+
+
+PATH_POLICY = load_path_policy()
 
 
 def read_toml(path: Path) -> dict:
@@ -100,7 +116,9 @@ def rename_lock_project(path: Path, old_name: str, new_name: str) -> None:
 
 def relative_runtime_path(value: str, field: str) -> Path:
     path = (PROJECT_ROOT / value).resolve()
-    if path == PROJECT_ROOT or not path.is_relative_to(PROJECT_ROOT):
+    if PATH_POLICY.paths_equal(path, PROJECT_ROOT) or not PATH_POLICY.path_is_relative_to(
+        path, PROJECT_ROOT
+    ):
         raise ValueError(f"{field} must be inside the scaffold before creating a project: {path}")
     return path.relative_to(PROJECT_ROOT)
 
@@ -111,6 +129,172 @@ def with_port(url: str, port: int) -> str:
         raise ValueError(f"Expected a local HTTP URL in configuration: {url}")
     host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
     return parts._replace(netloc=f"{host}:{port}").geturl()
+
+
+def validate_template_shape(settings: dict) -> None:
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise ValueError(message)
+
+    def valid_filename(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and bool(value)
+            and value not in {".", ".."}
+            and "/" not in value
+            and "\\" not in value
+        )
+
+    application = settings.get("application")
+    require(
+        isinstance(application, dict)
+        and isinstance(application.get("title"), str)
+        and bool(application["title"]),
+        "Template application.title must be a non-empty string",
+    )
+    server = settings.get("server")
+    vite = settings.get("vite")
+    require(
+        isinstance(server, dict)
+        and isinstance(server.get("workers"), int)
+        and not isinstance(server["workers"], bool)
+        and server["workers"] == 1,
+        "Template server.workers must be 1",
+    )
+    for section_name, section in (("server", server), ("vite", vite)):
+        require(isinstance(section, dict), f"Template {section_name} must be a table")
+        port = section.get("port")
+        require(
+            isinstance(port, int) and not isinstance(port, bool) and 1 <= port <= 65535,
+            f"Template {section_name}.port must be an integer from 1 to 65535",
+        )
+    require(
+        isinstance(vite.get("proxy_target"), str),
+        "Template vite.proxy_target must be a string",
+    )
+    require(
+        isinstance(settings.get("allowed_origins"), list)
+        and all(isinstance(origin, str) for origin in settings["allowed_origins"]),
+        "Template allowed_origins must be a list of strings",
+    )
+    for field in (
+        "data_dir",
+        "backup_directory",
+        "frontend_dir",
+        "database_filename",
+        "serve_frontend",
+        "frontend_clean_output",
+    ):
+        expected = bool if field in {"serve_frontend", "frontend_clean_output"} else str
+        require(isinstance(settings.get(field), expected), f"Template {field} has an invalid type")
+    require(
+        isinstance(settings.get("service"), dict)
+        and isinstance(settings["service"].get("pid_file"), str),
+        "Template service.pid_file must be a string",
+    )
+    require(
+        valid_filename(settings.get("database_filename")),
+        "Template database_filename must be a filename without directories",
+    )
+    logging_settings = settings.get("logging")
+    require(
+        isinstance(logging_settings, dict)
+        and isinstance(logging_settings.get("directory"), str)
+        and valid_filename(logging_settings.get("filename"))
+        and valid_filename(logging_settings.get("bootstrap_filename")),
+        "Template logging directory must be a string and log filenames must be filenames",
+    )
+    testing = settings.get("testing")
+    require(
+        isinstance(testing, dict) and isinstance(testing.get("temporary_directory"), str),
+        "Template testing.temporary_directory must be a string",
+    )
+
+
+def validate_template_paths(settings: dict) -> None:
+    PATH_POLICY.validate_runtime_paths(
+        PROJECT_ROOT,
+        frontend_dir=settings["frontend_dir"],
+        frontend_clean_output=settings["frontend_clean_output"],
+        data_dir=settings["data_dir"],
+        backup_directory=settings["backup_directory"],
+        logging_directory=settings["logging"]["directory"],
+        pid_file=settings["service"]["pid_file"],
+        temporary_directory=settings["testing"]["temporary_directory"],
+        database_filename=settings["database_filename"],
+        logging_filename=settings["logging"]["filename"],
+        bootstrap_filename=settings["logging"]["bootstrap_filename"],
+    )
+
+
+ROOT_PROJECT_FILES = (
+    "AGENTS.md",
+    "README.md",
+    ".gitignore",
+    ".editorconfig",
+    ".node-version",
+    "configs/app.toml",
+    "backend/pyproject.toml",
+    "backend/uv.lock",
+    "backend/alembic.ini",
+    "backend/.python-version",
+    "frontend/index.html",
+    "frontend/package.json",
+    "frontend/pnpm-lock.yaml",
+    "frontend/vite.config.ts",
+    "frontend/tsconfig.json",
+    "frontend/eslint.config.js",
+    "frontend/playwright.config.ts",
+    "frontend/.npmrc",
+    "frontend/.prettierrc.toml",
+    "frontend/.prettierignore",
+)
+SOURCE_TREE_ROOTS = (
+    "backend/app",
+    "backend/migrations",
+    "backend/tools",
+    "backend/tests",
+    "configs",
+    "docs",
+    "scripts",
+    "frontend/src",
+    "frontend/scripts",
+    "frontend/e2e",
+    "frontend/public",
+)
+
+
+def _is_ignored_source(relative: Path) -> bool:
+    if any(
+        part.startswith(".") or part in {"__pycache__", ".pytest_cache", ".ruff_cache"}
+        for part in relative.parts
+    ):
+        return True
+    if relative.suffix in {".pyc", ".pyo"}:
+        return True
+    return relative.parts[0] == "configs" and ".local." in relative.name
+
+
+def check_project_files(target: Path) -> None:
+    missing_roots = [
+        root_name for root_name in SOURCE_TREE_ROOTS if not (PROJECT_ROOT / root_name).is_dir()
+    ]
+    if missing_roots:
+        raise ValueError(f"Template source roots are missing: {', '.join(missing_roots)}")
+
+    relative_files = set(ROOT_PROJECT_FILES)
+    for root_name in SOURCE_TREE_ROOTS:
+        source_root = PROJECT_ROOT / root_name
+        for source_file in source_root.rglob("*"):
+            if not source_file.is_file():
+                continue
+            relative = source_file.relative_to(PROJECT_ROOT)
+            if not _is_ignored_source(relative):
+                relative_files.add(relative.as_posix())
+
+    missing = sorted(name for name in relative_files if not (target / name).is_file())
+    if missing:
+        raise ValueError(f"Generated project is missing required files: {', '.join(missing)}")
 
 
 def copy_source(target: Path, excluded: list[Path]) -> None:
@@ -129,7 +313,7 @@ def copy_source(target: Path, excluded: list[Path]) -> None:
         command.append(f"--exclude=/{pattern}")
     subprocess.run([*command, f"{PROJECT_ROOT}/", f"{target}/"], check=True)
     for path in target.rglob("*"):
-        if path.is_symlink() and not path.resolve().is_relative_to(target):
+        if path.is_symlink() and not PATH_POLICY.path_is_relative_to(path.resolve(), target):
             raise ValueError(f"Copied symlink points outside the new project: {path}")
 
 
@@ -179,6 +363,8 @@ def update_documents(target: Path, name: str, settings: dict, vite_port: int, po
 
 def create_project(name: str, target: Path, port: int, vite_port: int | None) -> int:
     settings = read_toml(PROJECT_ROOT / "configs/app.toml")
+    validate_template_shape(settings)
+    validate_template_paths(settings)
     if vite_port is None:
         vite_port = settings["vite"]["port"]
     if port == vite_port:
@@ -188,7 +374,7 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
     if os.path.lexists(target):
         raise ValueError(f"Target already exists; nothing was overwritten: {target}")
     target = target.resolve()
-    if target.is_relative_to(PROJECT_ROOT):
+    if PATH_POLICY.path_is_relative_to(target, PROJECT_ROOT):
         raise ValueError("Target must be outside the scaffold directory.")
 
     paths = {
@@ -205,7 +391,7 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         ),
     }
     testing_directory = (PROJECT_ROOT / settings["testing"]["temporary_directory"]).resolve()
-    if testing_directory.is_relative_to(PROJECT_ROOT):
+    if PATH_POLICY.path_is_relative_to(testing_directory, PROJECT_ROOT):
         paths[("testing", "temporary_directory")] = relative_runtime_path(
             settings["testing"]["temporary_directory"], "testing.temporary_directory"
         )
@@ -233,6 +419,7 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
     target.mkdir()
     try:
         copy_source(target, [*paths.values(), pid.with_suffix(pid.suffix + ".lock")])
+        check_project_files(target)
         (target / "configs/app.toml").write_text(config, encoding="utf-8")
         ignore_runtime_paths(
             target,

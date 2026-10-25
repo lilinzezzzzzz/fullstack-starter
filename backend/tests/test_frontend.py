@@ -36,7 +36,15 @@ def test_serves_build_and_deep_link(web_client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    ["/api", "/api/missing", "/assets/missing.js", "/missing.css", "/data/app.sqlite3", "/.env"],
+    [
+        "/api",
+        "/api/missing",
+        "/assets/missing.js",
+        "/missing.css",
+        "/data/app.sqlite3",
+        "/.data/app.sqlite3",
+        "/.env",
+    ],
 )
 def test_api_and_file_errors_do_not_become_html(web_client: TestClient, path: str) -> None:
     response = web_client.get(path, headers={"accept": "text/html"})

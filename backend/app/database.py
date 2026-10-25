@@ -12,6 +12,7 @@ from sqlalchemy import URL, Connection, event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from app.config import BACKEND_ROOT, Settings
+from app.service_state import ServiceError, operation_lock
 
 MIN_SQLITE_VERSION = (3, 51, 3)
 
@@ -19,7 +20,9 @@ MIN_SQLITE_VERSION = (3, 51, 3)
 def check_sqlite_version() -> None:
     if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
         raise RuntimeError(
-            f"SQLite 3.51.3+ is required for WAL; this Python uses {sqlite3.sqlite_version}."
+            "SQLite 3.51.3+ is the scaffold's data-integrity baseline for the WAL-reset fix; "
+            f"this Python uses {sqlite3.sqlite_version}. "
+            "Use a Python build linked to a supported SQLite version; see README."
         )
 
 
@@ -98,7 +101,13 @@ async def check_database_revision(engine: AsyncEngine, settings: Settings) -> No
 
 def upgrade_database(settings: Settings) -> None:
     """Synchronous CLI/setup boundary; env.py runs and disposes its own async engine."""
-    command.upgrade(migration_config(settings), "head")
+    with operation_lock(settings.service.pid_file):
+        if settings.service.pid_file.exists():
+            raise ServiceError(
+                "Stop the service with sh scripts/service.sh stop using the same --config "
+                "before db-upgrade. An existing PID file is left untouched."
+            )
+        command.upgrade(migration_config(settings), "head")
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:

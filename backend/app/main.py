@@ -27,6 +27,14 @@ def create_app(settings: Settings) -> FastAPI:
             await engine.dispose()
 
     application = FastAPI(
+        # Telemetry is an explicit project capability; the scaffold does not opt in.
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
+        },
         title=settings.application.title,
         version=settings.application.version,
         docs_url=settings.application.docs_path if settings.application.docs_enabled else None,

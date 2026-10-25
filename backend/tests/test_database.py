@@ -19,6 +19,7 @@ from app.database import (
     upgrade_database,
 )
 from app.main import create_app
+from app.service_state import ServiceError, operation_lock
 from app.services.backup import backup_database
 from tests.helpers import settings_for, write_config
 
@@ -46,7 +47,8 @@ def test_startup_does_not_create_database(tmp_path: Path) -> None:
 
 
 def test_unversioned_database_requires_explicit_migration(tmp_path: Path) -> None:
-    settings = settings_for(tmp_path, data_dir=str(tmp_path))
+    settings = settings_for(tmp_path, data_dir=str(tmp_path / "unversioned"))
+    settings.data_dir.mkdir()
     settings.database_path.touch()
     with pytest.raises(RuntimeError, match="schema is not current"):
         with TestClient(create_app(settings), base_url="http://127.0.0.1"):
@@ -101,6 +103,21 @@ def test_repeat_migration_preserves_records(settings: Settings) -> None:
     upgrade_database(settings)
     with closing(sqlite3.connect(settings.database_path)) as connection:
         assert connection.execute("SELECT value FROM probe").fetchone() == ("keep me",)
+
+
+def test_migration_refuses_existing_pid_file_without_touching_it(settings: Settings) -> None:
+    settings.service.pid_file.write_text("12345\n")
+    original = settings.database_path.read_bytes()
+    with pytest.raises(ServiceError, match="Stop the service"):
+        upgrade_database(settings)
+    assert settings.service.pid_file.read_text() == "12345\n"
+    assert settings.database_path.read_bytes() == original
+
+
+def test_migration_cannot_race_service_operations(settings: Settings) -> None:
+    with operation_lock(settings.service.pid_file):
+        with pytest.raises(ServiceError, match="in progress"):
+            upgrade_database(settings)
 
 
 def test_paths_with_unicode_and_uri_characters(tmp_path: Path) -> None:

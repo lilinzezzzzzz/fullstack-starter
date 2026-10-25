@@ -5,6 +5,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
+from app.path_safety import path_is_relative_to, validate_runtime_paths
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 CONFIG_FILE = PROJECT_ROOT / "configs" / "app.toml"
@@ -161,21 +163,19 @@ class Settings(ConfigSection):
             self.application.docs_enabled or self.application.redoc_enabled
         ):
             raise ValueError("Interactive documentation requires openapi_enabled=true")
-        if self.frontend_clean_output and self.frontend_dir != PROJECT_ROOT / "frontend/dist":
-            raise ValueError("Automatic output cleaning is only allowed for frontend/dist")
-        if any(
-            path.is_relative_to(self.frontend_dir)
-            for path in (
-                self.data_dir,
-                self.backup_directory,
-                self.logging.directory,
-                self.service.pid_file,
-                BACKEND_ROOT,
-                PROJECT_ROOT / "configs",
-                PROJECT_ROOT / "frontend/src",
-            )
-        ):
-            raise ValueError("Frontend output must not contain private data or project source")
+        validate_runtime_paths(
+            PROJECT_ROOT,
+            frontend_dir=self.frontend_dir,
+            frontend_clean_output=self.frontend_clean_output,
+            data_dir=self.data_dir,
+            backup_directory=self.backup_directory,
+            logging_directory=self.logging.directory,
+            pid_file=self.service.pid_file,
+            temporary_directory=self.testing.temporary_directory,
+            database_filename=self.database_filename,
+            logging_filename=self.logging.filename,
+            bootstrap_filename=self.logging.bootstrap_filename,
+        )
         return self
 
     @property
@@ -190,6 +190,6 @@ def load_settings(config_file: str | Path) -> Settings:
         raise ValueError("Application configuration must be a .toml file")
     with path.open("rb") as handle:
         settings = Settings.model_validate(tomllib.load(handle))
-    if path.is_relative_to(settings.frontend_dir):
+    if path_is_relative_to(path, settings.frontend_dir):
         raise ValueError("Configuration file must not be inside the public frontend directory")
     return settings

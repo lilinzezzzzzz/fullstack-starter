@@ -4,6 +4,68 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-10-25 请求日志统一使用 Loguru 上下文
+
+请求中间件继续使用 `logger.contextualize(request_id=...)` 包裹请求处理，移除 `finally` 中的 `logger.bind`。未处理异常由 `ServerErrorMiddleware` 在请求中间件退出后处理，因此在 `unexpected_error` 内用同一 `contextualize` 恢复 request_id 后再记录异常，不依赖 `bind`。生产代码中不再有 `logger.bind` 调用。
+
+本次 macOS、Python 3.14.7 的观察结果：完整后端测试 131 项通过，包含 500 日志中的 request_id 断言；Ruff lint 与格式检查通过，40 个 Python 文件；前端 Prettier、ESLint、TypeScript 和 API 类型一致性检查通过。测试使用临时日志、SQLite、PID 和配置，日常服务保持停止。
+
+## 2026-10-25 路径别名与生成完整性加固
+
+路径策略改为解析符号链接后折叠大小写比较，阻止 macOS 大小写不敏感文件系统上的源码、遗留运行目录和依赖目录别名绕过；公开输出、数据、备份、日志、PID 和测试临时目录共用同一规则。新增数据库、应用日志、bootstrap log 和 PID 的文件路径冲突检查，避免 PID 或日志覆盖数据库文件。创建器复制前校验 `server.workers`、端口、路径和创建所需字段类型，复制后按源文件树核对 API、路由、服务、迁移、测试、CLI、sh、前端和元信息文件；缺失文件时清理目标并失败。设计文档目录树和配置文档同步补充新模块、大小写规则与残留边界。
+
+本次 macOS、Python 3.14.7、SQLite 3.53.1 的观察结果：
+
+| 检查 | 观察结果 |
+| --- | --- |
+| 后端完整测试 | 131 项通过，包含大小写别名拒绝、自动清空符号链接拒绝、运行时文件冲突、无效模板、缺失 API/App 入口和真实启停回归 |
+| Python 检查 | Ruff lint 与格式检查通过，脚本和新增模块包含在检查范围内 |
+| 前端静态检查 | Prettier、ESLint、TypeScript 和 API 类型一致性检查通过 |
+| 日常数据保护 | `.data/`、`logs/`、`.run/` 和 `frontend/dist` 未用于验证；测试使用临时 TOML、SQLite、日志、PID 和生成副本 |
+| E2E | 构建输出临时化、临时服务启动/停止和日常 `frontend/dist` 哈希不变已验证；4 项 Chromium 未完成，本机缺少 Playwright headless shell |
+
+创建器仍不引入应用依赖，因此完整 Pydantic 字段、枚举和跨字段语义由生成项目首次 `export-settings`、测试或启动校验；创建器只负责路径、源文件完整性和创建过程所需的关键字段。
+
+## 2026-10-25 PID 与操作锁归入 .run
+
+随附 `service.pid_file` 改为 `.run/fullstack-starter.pid`，操作锁继续由 PID 路径自动派生为 `.run/fullstack-starter.pid.lock`，不新增配置字段。`.run/` 整体被 Git 忽略；生成项目保留该父目录约定，重命名为 `.run/<项目名>.pid`，不复制原项目的运行状态。README、目录设计、配置约定和相关测试同步更新。
+
+先用旧配置的 sh 入口确认服务已停止，确认旧锁没有打开的文件描述符、没有同配置的服务进程，且目标 .run/ 尚不存在；持有原操作锁，将既有空锁文件原地移入 .run/ 并更新主 TOML。锁文件的内容哈希、大小、mtime 和 inode 均保持一致；原位置没有 PID 或锁文件，新位置没有运行中 PID，未启动日常服务。
+
+完整后端测试 114 项通过，包含嵌套 PID 目录自动创建、互斥锁、真实 sh/PID 启停重启、运行中迁移拒绝、生成项目路径和排除规则。修改的 2 个 Python 测试文件通过 Ruff lint 与格式检查；Git 忽略检查确认 `.run/` 中的 PID、锁及其他状态文件均被忽略。新配置下 `service.sh status` 返回 3 并显示 Stopped。
+
+验证使用临时 TOML、SQLite、日志和 PID，临时服务均已退出；日常 `.data/`、日志和前端构建共 14 个已有路径的哈希、大小及 mtime 与操作前一致。
+
+## 2026-10-25 默认数据目录调整为 .data
+
+主 TOML 的 `data_dir` 从 `data` 改为 `.data`，`backup_directory` 同步改为 `.data/backups`；更新 README、当前目录设计、配置约定、项目规则和生成项目的默认路径断言。`.data/` 整体保持 Git 忽略，旧 `data/` 忽略规则保留，避免遗留数据误提交。历史记录中的旧路径保留其当时含义。
+
+操作前确认日常服务没有 PID 文件、data/ 内没有打开的文件，目标 .data/ 不存在；持有服务操作锁，将现有目录原地重命名并同步配置。目录中的一个 SQLite 文件在迁移和验证前后字节哈希、大小、mtime 与 inode 一致，未打开日常数据库执行 SQL，也未创建新库或执行迁移；旧 data/ 目录已不存在。
+
+完整后端测试 114 项通过，包含生成项目默认数据/备份路径、排除日常数据和隐藏路径 404。修改的 3 个 Python 测试文件通过 Ruff lint 和格式检查，`.data/app.sqlite3` 与 `.data/backups/` 的 Git 忽略规则检查通过。测试使用临时 TOML、SQLite、日志和 PID，日常服务保持停止。
+
+## 2026-10-25 路径、遥测与测试隔离修复
+
+应用和创建器共用仅依赖标准库的路径策略，阻止运行目录与源码双向重叠，并解析符号链接；创建器复制后校验关键入口，缺失时清理本次目标并失败。前端输出只允许以 frontend/dist 子树作为 frontend/ 内的例外，测试临时父目录另按 mkdtemp 的使用方式约束。
+
+FastAPI 原生 OpenTelemetry 的五项开关显式关闭，依赖下限调整为 0.162.0；锁文件只修改最低版本声明，第三方包版本和哈希未变。索引和唯一约束按全部列命名，未命名 CHECK 可正常建表，文档说明迁移所需的显式 CHECK 名称与 autogenerate 边界。SQLite 仍统一要求 3.51.3+，补充 WAL-reset 修复依据和 Python 实际链接版本的检查方式。
+
+错误响应保留 Allow、WWW-Authenticate、Retry-After，并统一添加 nosniff。数据库升级与启停共用锁，有 PID 文件时拒绝迁移。E2E 强制将构建输出替换为本次临时目录，直接执行 Playwright 会提示正确入口。补充私有文件变体和 SQLite 辅助文件忽略规则，移动客户端 import，并明确组件主题、自定义忽略规则和通用创建路径的文档边界。
+
+本次 macOS、Python 3.14.7、SQLite 3.53.1、Node.js 24.22.0 的观察结果：
+
+| 检查 | 观察结果 |
+| --- | --- |
+| 当前项目完整后端测试 | 113 项通过，包含路径拒绝、生成完整性、遥测关闭、错误头、模型建表/autogenerate、迁移互斥和真实 sh/PID 启停 |
+| 生成项目完整后端测试 | 113 项通过；新项目名和端口不同，复用已安装后端依赖，未将依赖安装计为独立验证结果 |
+| Python 检查 | Ruff lint、40 个 Python 文件格式检查通过；uv 离线锁文件检查通过 |
+| 前端静态检查 | Prettier、ESLint、TypeScript 和 API 类型一致性检查通过 |
+| 生产构建与 Chromium | Vite 输出到任务临时目录，4 项页面流程通过；测试服务正常停止 |
+| E2E 隔离检查 | 入口配置仍指定日常 frontend/dist 和清理开关 true；运行配置实际替换为临时 dist 和 false，产物未包含私有运行路径 |
+| 日常文件保护 | 对日常构建、数据、日志、PID/锁和主 TOML 共 16 个已有路径比较哈希、大小和 mtime，结果一致；无本次残留服务进程 |
+
+验证使用临时 TOML、数据库、日志、PID、生成副本、浏览器和构建产物。日常服务未被启停，当前项目未新增业务表或迁移版本。
+
 ## 2026-10-25 日志初始化模块命名
 
 将 `backend/app/logging_config.py` 重命名为 [backend/app/logging_setup.py](../backend/app/logging_setup.py)，同步应用工厂、服务控制器和测试导入，以及当前设计中的目录名称。`InterceptHandler` 和 `configure_logging` 的实现保持不变。

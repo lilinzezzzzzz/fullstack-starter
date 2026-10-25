@@ -1,8 +1,8 @@
 # Every application setting is required. Missing fields never receive code or environment defaults.
 # Relative paths are resolved from the project root, not this file's directory.
-data_dir = "data"
+data_dir = ".data"
 database_filename = "app.sqlite3"
-backup_directory = "data/backups"
+backup_directory = ".data/backups"
 frontend_dir = "frontend/dist"
 serve_frontend = true
 # Automatic cleaning is only allowed for the scaffold-owned frontend/dist directory.
@@ -57,7 +57,7 @@ console = false
 request_logging = true
 
 [service]
-pid_file = "fullstack-starter.pid"
+pid_file = ".run/fullstack-starter.pid"
 startup_timeout_seconds = 15.0
 shutdown_timeout_seconds = 15.0
 inspection_timeout_seconds = 2.0

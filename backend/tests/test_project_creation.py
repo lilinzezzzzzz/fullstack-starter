@@ -58,10 +58,13 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert settings["vite"]["proxy_target"] == "http://127.0.0.1:18123"
     assert "http://127.0.0.1:5182" in settings["allowed_origins"]
     assert "http://localhost:18123" in settings["allowed_origins"]
-    assert Path(settings["data_dir"]) == target.resolve() / "data"
-    assert Path(settings["service"]["pid_file"]) == target.resolve() / "ledger-app.pid"
+    assert Path(settings["data_dir"]) == target.resolve() / ".data"
+    assert Path(settings["backup_directory"]) == target.resolve() / ".data/backups"
+    assert Path(settings["service"]["pid_file"]) == target.resolve() / ".run/ledger-app.pid"
     assert Path(settings["logging"]["directory"]) == target.resolve() / "logs"
     for relative in (
+        ".data",
+        ".run",
         "data",
         "logs",
         ".git",
@@ -294,3 +297,107 @@ def test_external_runtime_path_is_rejected_without_touching_its_data(tmp_path: P
     assert "data_dir must be inside" in result.stderr
     assert not target.exists()
     assert marker.read_text() == "keep"
+
+
+@pytest.mark.parametrize(
+    "field", ["logging.directory", "frontend_dir", "testing.temporary_directory"]
+)
+def test_creator_rejects_source_paths_before_copying(tmp_path: Path, field: str) -> None:
+    template = tmp_path / "template"
+    result = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert result.returncode == 0, result.stderr
+    path = template / "configs/app.toml"
+    config = tomllib.loads(path.read_text())
+    config["frontend_clean_output"] = False
+    if field == "frontend_dir":
+        config[field] = "scripts"
+    else:
+        section, name = field.split(".")
+        config[section][name] = "backend/app"
+    path.write_text(tomli_w.dumps(config))
+    original = (template / "backend/app/main.py").read_bytes()
+    target = tmp_path / "rejected"
+    result = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "sample-app", "18124"),
+    )
+    assert result.returncode == 1
+    assert "project source" in result.stderr
+    assert not target.exists()
+    assert (template / "backend/app/main.py").read_bytes() == original
+
+
+def test_creator_rejects_invalid_template_settings_before_copying(tmp_path: Path) -> None:
+    template = tmp_path / "template"
+    result = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert result.returncode == 0, result.stderr
+    config_path = template / "configs/app.toml"
+    config_path.write_text(config_path.read_text().replace("workers = 1", "workers = 2"))
+    target = tmp_path / "invalid-config"
+    result = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "sample-app", "18124"),
+    )
+    assert result.returncode == 1
+    assert "server.workers must be 1" in result.stderr
+    assert not target.exists()
+
+
+def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path: Path) -> None:
+    template = tmp_path / "template"
+    result = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert result.returncode == 0, result.stderr
+    excluded = (
+        "/backend/app/main.py",
+        "/backend/app/api.py",
+        "/frontend/src/App.tsx",
+    )
+    with (template / ".gitignore").open("a") as handle:
+        handle.write("\n" + "\n".join(excluded) + "\n")
+    target = tmp_path / "incomplete"
+    result = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "sample-app", "18124"),
+    )
+    assert result.returncode == 1
+    assert "missing required files" in result.stderr
+    for name in ("backend/app/main.py", "backend/app/api.py", "frontend/src/App.tsx"):
+        assert name in result.stderr
+    assert not target.exists()
+    for name in ("backend/app/main.py", "backend/app/api.py", "frontend/src/App.tsx"):
+        assert (template / name).is_file()
+
+
+def test_git_ignores_private_files_and_runtime_artifacts(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text((PROJECT_ROOT / ".gitignore").read_text())
+    subprocess.run(["git", "init", "--quiet"], cwd=tmp_path, check=True, capture_output=True)
+    paths = [
+        ".env.local",
+        ".secrets.production",
+        ".run/state.json",
+        "custom/app.sqlite3-wal",
+        "custom/app.sqlite3-shm",
+    ]
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", *paths],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.splitlines() == paths

@@ -1,3 +1,5 @@
+import { clientConfig } from '../config';
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -47,4 +49,3 @@ export async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T>
     signal?.removeEventListener('abort', cancel);
   }
 }
-import { clientConfig } from '../config';

@@ -93,8 +93,9 @@ def test_stop_timeout_preserves_pid_without_force_kill(
 
 
 def test_operation_lock_prevents_concurrent_controllers(tmp_path: Path) -> None:
-    path = tmp_path / "service.pid"
+    path = tmp_path / ".run/service.pid"
     with service_control.operation_lock(path):
+        assert path.with_suffix(".pid.lock").is_file()
         with pytest.raises(service_control.ServiceError, match="in progress"):
             with service_control.operation_lock(path):
                 pass
@@ -140,6 +141,7 @@ def test_shell_start_status_restart_stop_and_stale_pid(
 ) -> None:
     config = write_config(tmp_path / "configuration with spaces")
     data = read_config(config)
+    data["service"]["pid_file"] = str(config.parent / ".run/service.pid")
     data["server"]["port"] = unused_port()
     data["server"]["graceful_shutdown_seconds"] = 1
     data["service"]["shutdown_timeout_seconds"] = 5
@@ -159,6 +161,15 @@ def test_shell_start_status_restart_stop_and_stale_pid(
         assert "Running" in controller(config, "status").stdout
         assert "Already running" in controller(config, "start").stdout
         assert service_control.read_pid(settings.service.pid_file) == first_pid
+        migration = subprocess.run(
+            [sys.executable, "-m", "app.cli", "--config", str(config), "db-upgrade"],
+            cwd=PROJECT_ROOT / "backend",
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert migration.returncode == 1
+        assert "Stop the service" in migration.stderr
         with urlopen(
             f"http://127.0.0.1:{settings.server.port}/api/v1/hello", timeout=3
         ) as response:
@@ -177,6 +188,8 @@ def test_shell_start_status_restart_stop_and_stale_pid(
     finally:
         controller(config, "stop")
     assert not settings.service.pid_file.exists()
+    assert settings.service.pid_file.with_suffix(".pid.lock").is_file()
+    assert not (config.parent / "service.pid").exists()
     assert not (tmp_path / "must-not-be-used").exists()
     log = (settings.logging.directory / settings.logging.filename).read_text()
     assert "GET /api/v1/hello 200" in log
