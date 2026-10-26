@@ -107,7 +107,7 @@ def test_documentation_and_metadata_are_driven_by_file(tmp_path: Path) -> None:
         assert client.get("/docs").status_code == 404
         assert client.get("/redoc").status_code == 404
         assert client.get("/docs", headers={"accept": "text/html"}).status_code == 404
-        assert client.get("/api/v1/hello").json() == {"message": "Hello, configured-project!"}
+        assert client.get("/api/v1/hello").json() == {"message": "Hello World"}
 
 
 @pytest.mark.anyio

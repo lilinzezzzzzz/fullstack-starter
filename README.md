@@ -94,7 +94,7 @@ sh scripts/service.sh status
 
 `build` 包含 TypeScript 检查。完整静态检查与 Chromium 页面流程见下方“接口类型与验证”；后端测试使用临时数据库，不依赖新项目的日常库。
 
-访问 [新项目欢迎页](http://127.0.0.1:18002/)，确认连接成功；[Hello API](http://127.0.0.1:18002/api/v1/hello) 应返回 `Hello, my-app!`，[健康检查](http://127.0.0.1:18002/api/health) 应显示数据库正常。运行路径以新项目自己的 TOML 为准。
+访问 [新项目欢迎页](http://127.0.0.1:18002/)，确认连接成功；[Hello API](http://127.0.0.1:18002/api/v1/hello) 应返回 `{"message": "Hello World"}`，[健康检查](http://127.0.0.1:18002/api/health) 应显示数据库正常。运行路径以新项目自己的 TOML 为准。
 
 查看完成后停止服务，正常停止会清理 `.run/my-app.pid`，`.run/my-app.pid.lock` 可以保留：
 

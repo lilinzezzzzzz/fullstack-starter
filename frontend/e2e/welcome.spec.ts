@@ -9,7 +9,7 @@ test('single FastAPI service serves Hello, assets and client-side navigation', a
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Hello, world.');
   await expect(page.getByText('前后端已连通')).toBeVisible();
-  await expect(page.getByText(`Hello, ${await page.title()}!`)).toBeVisible();
+  await expect(page.getByText('Hello World', { exact: true })).toBeVisible();
   await page.goto('/welcome');
   await page.reload();
   await expect(page.getByText('前后端已连通')).toBeVisible();
@@ -39,7 +39,7 @@ test('connection error is explained and retry reconnects to the real API', async
   await page.unroute('**/api/v1/hello');
   await page.getByRole('button', { name: '重试连接' }).click();
   await expect(page.getByText('前后端已连通')).toBeVisible();
-  await expect(page.getByText(`Hello, ${await page.title()}!`)).toBeVisible();
+  await expect(page.getByText('Hello World', { exact: true })).toBeVisible();
 });
 
 test('welcome stays available while API connection is loading', async ({ page }) => {

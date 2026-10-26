@@ -118,7 +118,7 @@ fullstack-starter/
 
 调用关系为 Router → Service → SQLAlchemy → SQLite。服务类通过构造参数接收业务依赖，类内不处理 FastAPI 请求或依赖解析，也不构造 Pydantic I/O Schema 或基础设施。
 
-各服务的 `new_*_service` 作为模块级工厂，与业务类放在同一文件中，负责框架适配和依赖组装。服务模块可以导入 FastAPI，业务类自身不感知 HTTP。HelloService 是无状态业务类，由 `services/hello.py` 中的 `new_hello_service` 读取当前应用的标题并构造；Router 从同一模块导入服务类和工厂，并通过 `Depends(new_hello_service)` 注入。
+各服务的 `new_*_service` 作为模块级工厂，与业务类放在同一文件中，负责框架适配和依赖组装。服务模块可以按需导入 FastAPI，业务类自身不感知 HTTP。HelloService 无状态、无外部依赖，固定返回 `Hello World`；`services/hello.py` 中的无参工厂 `new_hello_service` 使用 `functools.cache`，在缓存命中后跨请求复用服务实例，不持有请求或配置。Router 从同一模块导入服务类和工厂，并通过 `Depends(new_hello_service)` 注入。
 
 数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
 
@@ -140,7 +140,7 @@ TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取�
 
 | Method / 路径 | 契约 |
 | --- | --- |
-| `GET /api/v1/hello` | 欢迎信息，成功字段为 `message` |
+| `GET /api/v1/hello` | 固定返回 `{"message": "Hello World"}` |
 | `GET /api/health` | 检查服务和真实 SQLite 连接 |
 | `/`、`/welcome` | Hello 欢迎页，可直接访问和刷新 |
 | `/docs`、`/openapi.json` | 文档与 Schema；开关和路径来自配置 |

@@ -4,6 +4,16 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-10-26 Hello 固定欢迎语与无参缓存工厂
+
+Hello API 固定返回 `{"message": "Hello World"}`，`HelloService` 移除应用标题依赖；同文件的 `new_hello_service()` 改为无参，并使用 `functools.cache` 跨请求复用缓存的无状态服务实例。工厂不再接收 `Request` 或读取配置。应用标题仍用于 FastAPI/OpenAPI 元信息和前端应用标识。
+
+新增通过真实 FastAPI 依赖解析验证跨请求实例复用的测试，并在测试前后清空工厂缓存；同步更新 API、配置标题、sh/PID 启停和异常依赖覆盖断言，以及两处浏览器页面断言。README、当前设计和配置边界同步改为固定欢迎语，历史记录保留当时的行为。
+
+本次 macOS、Python 3.14.7 的观察结果：完整后端测试 132 项通过，耗时 22.20 秒；Ruff lint 与 41 个 Python 文件格式检查通过；前端 Prettier、ESLint、TypeScript 和 API 类型一致性检查通过。
+
+完整后端测试在具备 `ps` 和进程信号权限的执行环境运行，使用任务临时目录下的配置、SQLite、日志、PID 和生成副本。本次未启停日常服务，未运行浏览器 E2E。
+
 ## 2026-10-26 服务工厂与业务类同文件维护
 
 将 `new_hello_service` 移回 `backend/app/services/hello.py`，删除独立的 `backend/app/dependencies.py`；Router 和异常响应测试统一从服务模块导入工厂，继续使用 `Depends(new_hello_service)` 和对应的依赖覆盖入口。

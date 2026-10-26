@@ -1,5 +1,7 @@
+from typing import Annotated
+
 import pytest
-from fastapi import Query
+from fastapi import Depends, Query
 from fastapi.testclient import TestClient
 from starlette.exceptions import HTTPException
 
@@ -9,11 +11,35 @@ from app.main import create_app
 from app.services.hello import HelloService, new_hello_service
 
 
-def test_hello(client: TestClient, settings: Settings) -> None:
+def test_hello(client: TestClient) -> None:
     response = client.get("/api/v1/hello")
     assert response.status_code == 200
-    assert response.json() == {"message": f"Hello, {settings.application.title}!"}
+    assert response.json() == {"message": "Hello World"}
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_hello_service_is_reused_across_requests(settings: Settings) -> None:
+    app = create_app(settings)
+    observed_services: list[HelloService] = []
+
+    @app.get("/api/hello-instance")
+    def observe_hello_service(
+        service: Annotated[HelloService, Depends(new_hello_service)],
+    ) -> dict[str, str]:
+        observed_services.append(service)
+        return {"message": service.greet()}
+
+    new_hello_service.cache_clear()
+    try:
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            for _ in range(2):
+                response = client.get("/api/hello-instance")
+                assert response.status_code == 200
+                assert response.json() == {"message": "Hello World"}
+        assert len(observed_services) == 2
+        assert observed_services[0] is observed_services[1]
+    finally:
+        new_hello_service.cache_clear()
 
 
 def test_health_checks_database(client: TestClient) -> None:
@@ -127,9 +153,7 @@ def test_unexpected_error_is_safe(settings: Settings) -> None:
             raise RuntimeError("private implementation detail")
 
     app = create_app(settings)
-    app.dependency_overrides[new_hello_service] = lambda: FailingHelloService(
-        settings.application.title
-    )
+    app.dependency_overrides[new_hello_service] = lambda: FailingHelloService()
     with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
         response = client.get("/api/v1/hello")
     assert response.status_code == 500

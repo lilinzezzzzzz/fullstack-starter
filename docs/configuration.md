@@ -15,7 +15,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 | 分组 | 必填字段 | 使用位置 |
 | --- | --- | --- |
 | 根配置 | `data_dir`, `database_filename`, `backup_directory`, `frontend_dir`, `serve_frontend`, `frontend_clean_output`, `sqlite_timeout_seconds`, `allowed_hosts`, `allowed_origins` | 数据库、备份、前端输出和本机访问边界 |
-| `application` | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path` | FastAPI 标题、版本、文档路由；Hello 与前端应用标识 |
+| `application` | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path` | FastAPI 标题、版本、文档路由与前端应用标识；不影响固定的 Hello 欢迎语 |
 | `server` | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit` | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限 |
 | `database` | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds` | SQLite 日志与持久化模式、连接池容量和等待时间 |
 | `logging` | `directory`, `filename`, `bootstrap_filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging` | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志 |

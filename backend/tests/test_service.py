@@ -173,7 +173,7 @@ def test_shell_start_status_restart_stop_and_stale_pid(
         with urlopen(
             f"http://127.0.0.1:{settings.server.port}/api/v1/hello", timeout=3
         ) as response:
-            assert json.load(response) == {"message": f"Hello, {settings.application.title}!"}
+            assert json.load(response) == {"message": "Hello World"}
         controller(config, "restart")
         assert service_control.read_pid(settings.service.pid_file) != first_pid
         controller(config, "stop")
