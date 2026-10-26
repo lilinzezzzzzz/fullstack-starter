@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.config import BACKEND_ROOT, Settings
 from app.database import create_database_engine, get_session
-from app.services.backup import backup_database
+from app.maintenance.backup import DatabaseBackup
 
 
 def request_for_engine(engine: AsyncEngine) -> Request:
@@ -86,7 +86,7 @@ async def test_cancelled_backup_propagates_and_removes_partial_file(
 
     monkeypatch.setattr(aiosqlite.Connection, "backup", cancelled_copy)
     with pytest.raises(asyncio.CancelledError):
-        await backup_database(settings)
+        await DatabaseBackup(settings).create_snapshot()
     assert list(settings.backup_directory.iterdir()) == []
     assert settings.database_path.is_file()
 
@@ -135,7 +135,8 @@ async def test_backup_cancellation_waits_for_copy_before_closing_target(
         completed.set()
 
     monkeypatch.setattr(aiosqlite.Connection, "backup", delayed_copy)
-    task = asyncio.create_task(backup_database(settings))
+    backup = DatabaseBackup(settings)
+    task = asyncio.create_task(backup.create_snapshot())
     await started.wait()
     task.cancel()
     await asyncio.sleep(0)

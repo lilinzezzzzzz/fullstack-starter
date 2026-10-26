@@ -66,7 +66,8 @@ fullstack-starter/
 │   │   ├── logging_setup.py           # 日志初始化与 Uvicorn 桥接
 │   │   ├── cli.py                    # 配置/OpenAPI 导出、迁移、备份命令
 │   │   ├── routers/                  # hello.py、health.py
-│   │   ├── services/                 # hello.py、backup.py
+│   │   ├── services/                 # hello.py 业务服务
+│   │   ├── maintenance/              # backup.py、CLI 维护基础设施
 │   │   ├── models/                   # SQLAlchemy Base，无业务表
 │   │   └── schemas/                  # Hello、健康检查与错误 Schema
 │   ├── tools/
@@ -110,11 +111,12 @@ fullstack-starter/
 | 层 | 职责与边界 |
 | --- | --- |
 | `routers/` | HTTP 参数、依赖注入、调用 Service、响应声明；不执行数据库写入 |
-| `services/` | 业务规则、查询和写入事务；成功返回前提交，异常或取消时回滚 |
+| `services/` | 业务类、业务规则、查询和写入事务；成功返回前提交，异常或取消时回滚 |
+| `maintenance/` | CLI 专属维护基础设施，例如数据库快照；不承载 HTTP 业务 |
 | `models/` | 持久化结构、索引与约束；不依赖 Router 或 Service |
 | `schemas/` | 请求、响应和校验；与 ORM 模型分离 |
 
-调用关系为 Router → Service → SQLAlchemy → SQLite。Hello Service 是纯函数；数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
+调用关系为 Router → Service → SQLAlchemy → SQLite。服务以类实现并通过构造参数接收依赖，HelloService 是无状态业务类，由 Router 的依赖提供器注入应用标题；数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
 
 `create_app(settings)` 只装配应用。模块导入和 OpenAPI 导出不连接数据库、不创建日志、不要求前端产物存在。lifespan 检查前端产物和数据库版本，创建异步引擎与会话工厂，退出时 `await engine.dispose()`。
 
@@ -126,7 +128,7 @@ SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用
 
 升级期间持有与服务控制器相同的操作锁；有 PID 文件时拒绝迁移，先通过同配置的 sh 入口停服。该锁防止受管理服务启动与迁移并发，不能代替停止手动启动的服务或其他数据库使用者。
 
-备份实现在 `services/backup.py`，CLI 负责参数和事件循环。aiosqlite Backup API 创建独占命名的快照，校验完整性和迁移版本，不覆盖已有文件；取消时等待已提交的复制结束、关闭连接并清理未返回的结果，继续传播取消。恢复按 README 停服、验证副本、切换数据路径，不提供网页恢复入口。
+备份实现在 `maintenance/backup.py`，由 `DatabaseBackup` 类接收配置依赖，CLI 负责参数、对象组装和事件循环。aiosqlite Backup API 创建独占命名的快照，校验完整性和迁移版本，不覆盖已有文件；取消时等待已提交的复制结束、关闭连接并清理未返回的结果，继续传播取消。恢复按 README 停服、验证副本、切换数据路径，不提供网页恢复入口。
 
 ## 前端与接口契约
 

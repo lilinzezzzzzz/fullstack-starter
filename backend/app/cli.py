@@ -7,7 +7,7 @@ import aiosqlite
 
 from app.config import CONFIG_FILE, load_settings
 from app.database import upgrade_database
-from app.services.backup import backup_database
+from app.maintenance.backup import new_database_backup
 
 
 def main() -> None:
@@ -33,7 +33,8 @@ def main() -> None:
             upgrade_database(settings)
             print(f"Database schema is current: {settings.database_path}")
         else:
-            print(asyncio.run(backup_database(settings)))
+            backup = new_database_backup(settings)
+            print(asyncio.run(backup.create_snapshot()))
     except (OSError, RuntimeError, ValueError, aiosqlite.Error) as exc:
         parser.exit(1, f"Error: {exc}\n")
 

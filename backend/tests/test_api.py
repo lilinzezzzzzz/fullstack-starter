@@ -6,7 +6,8 @@ from starlette.exceptions import HTTPException
 from app.config import Settings
 from app.errors import AppError
 from app.main import create_app
-from app.services import hello
+from app.routers.hello import get_hello_service
+from app.services.hello import HelloService
 
 
 def test_hello(client: TestClient, settings: Settings) -> None:
@@ -121,14 +122,16 @@ def test_application_and_validation_errors(settings: Settings) -> None:
         assert failure.json()["code"] == "EXAMPLE_ERROR"
 
 
-def test_unexpected_error_is_safe(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail(_application_title: str) -> None:
-        raise RuntimeError("private implementation detail")
+def test_unexpected_error_is_safe(settings: Settings) -> None:
+    class FailingHelloService(HelloService):
+        def greet(self) -> str:
+            raise RuntimeError("private implementation detail")
 
-    monkeypatch.setattr(hello, "say_hello", fail)
-    with TestClient(
-        create_app(settings), base_url="http://127.0.0.1", raise_server_exceptions=False
-    ) as client:
+    app = create_app(settings)
+    app.dependency_overrides[get_hello_service] = lambda: FailingHelloService(
+        settings.application.title
+    )
+    with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
         response = client.get("/api/v1/hello")
     assert response.status_code == 500
     assert response.json()["code"] == "INTERNAL_ERROR"

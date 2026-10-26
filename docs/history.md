@@ -4,6 +4,12 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-10-26 服务层类化与维护边界
+
+将 Hello 示例改为 `HelloService` 业务类，由 `new_hello_service` 组合工厂接收应用标题，Router 通过 `Depends` 注入；服务返回业务字符串，响应 Schema 由 Router 映射，服务不导入 FastAPI 或 Pydantic。SQLite 快照从 `services/` 移到 `maintenance/backup.py` 的 `DatabaseBackup` 类，CLI 通过 `new_database_backup` 组装依赖，使 service 层保持业务聚焦。
+
+本次 macOS、Python 3.14.7 的观察结果：完整后端测试 131 项通过；Ruff lint 与格式检查通过，41 个 Python 文件；前端 Prettier、ESLint、TypeScript 和 API 类型一致性检查通过。测试使用临时配置、SQLite、日志和 PID，日常服务保持停止。
+
 ## 2026-10-25 请求日志统一使用 Loguru 上下文
 
 请求中间件继续使用 `logger.contextualize(request_id=...)` 包裹请求处理，移除 `finally` 中的 `logger.bind`。未处理异常由 `ServerErrorMiddleware` 在请求中间件退出后处理，因此在 `unexpected_error` 内用同一 `contextualize` 恢复 request_id 后再记录异常，不依赖 `bind`。生产代码中不再有 `logger.bind` 调用。

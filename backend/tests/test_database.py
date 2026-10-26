@@ -19,8 +19,8 @@ from app.database import (
     upgrade_database,
 )
 from app.main import create_app
+from app.maintenance.backup import DatabaseBackup
 from app.service_state import ServiceError, operation_lock
-from app.services.backup import backup_database
 from tests.helpers import settings_for, write_config
 
 
@@ -158,8 +158,9 @@ async def test_backup_includes_committed_wal_data_and_never_overwrites(settings:
     with closing(sqlite3.connect(settings.database_path, autocommit=True)) as source:
         source.execute("CREATE TABLE probe (value TEXT)")
         source.execute("INSERT INTO probe VALUES ('snapshot data')")
-        first = await backup_database(settings)
-        second = await backup_database(settings)
+        backup = DatabaseBackup(settings)
+        first = await backup.create_snapshot()
+        second = await backup.create_snapshot()
         assert first != second
         with closing(sqlite3.connect(first)) as snapshot:
             assert snapshot.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -171,7 +172,7 @@ async def test_backup_includes_committed_wal_data_and_never_overwrites(settings:
 async def test_backup_missing_database_does_not_create_one(tmp_path: Path) -> None:
     settings = settings_for(tmp_path, data_dir=str(tmp_path / "absent"))
     with pytest.raises(RuntimeError, match="Database missing"):
-        await backup_database(settings)
+        await DatabaseBackup(settings).create_snapshot()
     assert not settings.data_dir.exists()
 
 

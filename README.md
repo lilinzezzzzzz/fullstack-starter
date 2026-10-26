@@ -247,7 +247,7 @@ uv run --directory backend python -m app.cli db-backup
 
 Alembic 的命令入口仍是维护 CLI：迁移环境创建异步引擎，通过 `AsyncConnection.run_sync()` 将 Alembic 的同步 DDL API 桥接到异步驱动；不要在应用请求内自动升级数据库。同步测试准备可以调用 `upgrade_database()`，异步测试通过线程边界调用该同步维护入口。
 
-备份实现在 `backend/app/services/backup.py`，使用 aiosqlite 的异步 Backup API；CLI 负责参数和事件循环。取消时等待已经提交的复制完成再关闭目标连接、删除未返回的快照，并继续传播取消，不重新发起复制。
+备份实现在 `backend/app/maintenance/backup.py`，使用 `DatabaseBackup` 类接收配置依赖并调用 aiosqlite 的异步 Backup API；CLI 负责参数、对象组装和事件循环。取消时等待已经提交的复制完成再关闭目标连接、删除未返回的快照，并继续传播取消，不重新发起复制。
 
 `database.synchronous` 是 SQLite 的持久化级别，与 SQLAlchemy 的同步/异步调用方式无关。异步驱动使用相同的 SQLite 文件格式，不需要另建数据库或切换迁移版本。
 
@@ -289,6 +289,8 @@ pnpm --dir frontend test:e2e
 
 后端入口为 `routers/hello.py` → `services/hello.py` → `schemas/hello.py`；前端入口为 `pages/WelcomePage.tsx`，连接组件为 `components/ConnectionStatus.tsx`。
 
-新增业务时，在 `models/` 定义并导出模型，在 `schemas/` 定义接口，在 `services/` 通过 AsyncSession 管理异步业务和写入事务，在 `routers/` 注册 HTTP 路由。生成并审查 Alembic 迁移，再接入前端 `api/`、`hooks/` 和页面，更新生成类型及测试。复杂复用查询出现后再提取 DAO。
+服务以类实现，依赖由组合边界注入：Router 通过 FastAPI `Depends` 提供请求级服务，CLI 通过工厂构造维护对象。服务只承载业务行为，不导入 FastAPI 或 Pydantic Schema；Router 负责把服务返回值映射为响应 Schema。
+
+新增业务时，在 `models/` 定义并导出模型，在 `schemas/` 定义接口，在 `services/` 实现业务类，在 `routers/` 注册 HTTP 路由并注入服务。生成并审查 Alembic 迁移，再接入前端 `api/`、`hooks/` 和页面，更新生成类型及测试。复杂复用查询出现后再提取 DAO。
 
 索引与唯一约束的自动名称包含全部列。同一组列上的多个条件索引或表达式索引应显式命名。CheckConstraint 支持未命名建表；需要后续迁移管理时，应从首次定义起使用明确名称，例如 `CheckConstraint("quantity > 0", name="ck_items_positive_quantity")`。Alembic 的 autogenerate 不完整覆盖 CHECK 变更，必须人工审查和补齐迁移。
