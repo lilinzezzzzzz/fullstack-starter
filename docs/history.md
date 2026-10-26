@@ -4,6 +4,19 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-10-26 Hello World 浏览器 E2E 验证
+
+针对提交 `c625e01`，通过仓库的 `test:e2e` 隔离入口完成 TypeScript 检查、Vite 生产构建与 Chromium 页面回归。4 项浏览器测试全部通过，浏览器测试阶段耗时 5.6 秒，观察结果如下：
+
+- 首页正文显示 `Hello World`，前端路由与页面刷新正常，未知 API 和缺失静态资源返回 404，未观察到页面脚本错误。
+- 模拟连接失败后，重试恢复真实 API，并重新显示 `Hello World`。
+- API 加载期间欢迎页保持可用，响应释放后连接成功。
+- 窄屏无横向溢出，键盘可聚焦重试按钮并触发成功请求。
+
+本机已有 Chromium 缓存版本与当前 Playwright 要求不匹配，本次将匹配的 Chromium Headless Shell 安装到任务临时目录后执行验证。构建、TOML、SQLite、日志和 PID 均使用隔离路径；测试服务正常停止，临时浏览器与产物已清理。
+
+验证前后，日常配置、`.data/`、`.run/`、`logs/` 和 `frontend/dist` 中 12 个已有文件的哈希、大小和 mtime 一致，未新增或删除这些位置的文件。此次浏览器验证未修改源码，结束时工作区干净。
+
 ## 2026-10-26 Hello 固定欢迎语与无参缓存工厂
 
 Hello API 固定返回 `{"message": "Hello World"}`，`HelloService` 移除应用标题依赖；同文件的 `new_hello_service()` 改为无参，并使用 `functools.cache` 跨请求复用缓存的无状态服务实例。工厂不再接收 `Request` 或读取配置。应用标题仍用于 FastAPI/OpenAPI 元信息和前端应用标识。
