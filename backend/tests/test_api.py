@@ -4,9 +4,9 @@ from fastapi.testclient import TestClient
 from starlette.exceptions import HTTPException
 
 from app.config import Settings
+from app.dependencies import new_hello_service
 from app.errors import AppError
 from app.main import create_app
-from app.routers.hello import get_hello_service
 from app.services.hello import HelloService
 
 
@@ -128,7 +128,7 @@ def test_unexpected_error_is_safe(settings: Settings) -> None:
             raise RuntimeError("private implementation detail")
 
     app = create_app(settings)
-    app.dependency_overrides[get_hello_service] = lambda: FailingHelloService(
+    app.dependency_overrides[new_hello_service] = lambda: FailingHelloService(
         settings.application.title
     )
     with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:

@@ -60,6 +60,7 @@ fullstack-starter/
 │   │   ├── path_safety.py            # 大小写/符号链接安全的运行路径边界
 │   │   ├── service_state.py          # 启停与离线迁移共用的操作锁
 │   │   ├── database.py               # 异步引擎、会话依赖和版本检查
+│   │   ├── dependencies.py           # FastAPI 依赖提供器和 Service 组装
 │   │   ├── api.py                    # API 路由装配
 │   │   ├── frontend.py               # 静态托管与 SPA 回退边界
 │   │   ├── errors.py / middleware.py # 错误、请求标识和访问边界
@@ -110,13 +111,16 @@ fullstack-starter/
 
 | 层 | 职责与边界 |
 | --- | --- |
-| `routers/` | HTTP 参数、依赖注入、调用 Service、响应声明；不执行数据库写入 |
+| `routers/` | HTTP 参数、依赖声明、调用 Service、响应声明；不执行数据库写入 |
+| `dependencies.py` | FastAPI 依赖提供器，从当前应用读取配置并组装 Service |
 | `services/` | 业务类、业务规则、查询和写入事务；成功返回前提交，异常或取消时回滚 |
 | `maintenance/` | CLI 专属维护基础设施，例如数据库快照；不承载 HTTP 业务 |
 | `models/` | 持久化结构、索引与约束；不依赖 Router 或 Service |
 | `schemas/` | 请求、响应和校验；与 ORM 模型分离 |
 
-调用关系为 Router → Service → SQLAlchemy → SQLite。服务以类实现并通过构造参数接收依赖，HelloService 是无状态业务类，由 Router 的依赖提供器注入应用标题；数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
+调用关系为 Router → Service → SQLAlchemy → SQLite。服务以类实现并通过构造参数接收依赖。HelloService 是无状态业务类，由 `dependencies.py` 中的 `new_hello_service` 读取当前应用的标题并构造；Router 直接通过 `Depends(new_hello_service)` 注入，服务不依赖 FastAPI 或 Pydantic。
+
+数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
 
 `create_app(settings)` 只装配应用。模块导入和 OpenAPI 导出不连接数据库、不创建日志、不要求前端产物存在。lifespan 检查前端产物和数据库版本，创建异步引擎与会话工厂，退出时 `await engine.dispose()`。
 

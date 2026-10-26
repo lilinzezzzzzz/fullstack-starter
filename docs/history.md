@@ -4,6 +4,16 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-10-26 Hello 依赖组装简化
+
+将 `new_hello_service` 移到 `backend/app/dependencies.py`，由它从当前应用配置读取标题并构造 `HelloService`。Router 直接声明 `Depends(new_hello_service)`，删除原有 `get_hello_service` 转发层；`services/hello.py` 只保留业务类。异常响应测试的依赖覆盖入口和当前设计同步更新。
+
+本次 macOS、Python 3.14.7 的观察结果：18 项定向测试通过，覆盖 API、配置标题、独立 OpenAPI 导出与生成项目；Ruff lint 与格式检查通过，42 个 Python 文件；API 类型一致性检查通过。创建器测试首次受 uv 默认缓存目录权限限制，将子进程的 `UV_CACHE_DIR` 指向任务临时目录后单独重跑通过。
+
+随后在具备 `ps` 和进程信号权限的执行环境重跑完整后端测试，131 项通过，包含真实 sh/PID 启停；Ruff lint、42 个 Python 文件格式和 API 类型一致性检查也重新通过。沙箱中的全量运行有 130 项通过，1 项因 `ps` 权限限制失败，对应临时服务已通过原配置和 sh 入口停止。
+
+验证使用临时配置、SQLite、日志、PID 和生成副本，本次未启停日常服务，未运行浏览器 E2E。
+
 ## 2026-10-26 服务层类化与维护边界
 
 将 Hello 示例改为 `HelloService` 业务类，由 `new_hello_service` 组合工厂接收应用标题，Router 通过 `Depends` 注入；服务返回业务字符串，响应 Schema 由 Router 映射，服务不导入 FastAPI 或 Pydantic。SQLite 快照从 `services/` 移到 `maintenance/backup.py` 的 `DatabaseBackup` 类，CLI 通过 `new_database_backup` 组装依赖，使 service 层保持业务聚焦。
