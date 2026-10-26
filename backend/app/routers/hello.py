@@ -2,9 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.dependencies import new_hello_service
 from app.schemas.hello import HelloResponse
-from app.services.hello import HelloService
+from app.services.hello import HelloService, new_hello_service
 
 router = APIRouter(prefix="/v1", tags=["hello"])
 

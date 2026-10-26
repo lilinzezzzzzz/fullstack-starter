@@ -2,7 +2,8 @@
 
 - This is a local, single-user FastAPI + SQLite and React scaffold. The agreed design is in `docs/design.md`.
 - Keep request-layer backend responsibilities in `routers/`, `services/`, `models/`, and `schemas/`; put CLI-only infrastructure such as snapshots in `maintenance/`. Routers do not write to the database. Services own write transactions.
-- Implement services as classes with dependencies injected by their composition boundary (router or CLI). Keep services focused on business behavior and out of FastAPI/Pydantic schema and infrastructure construction.
+- Implement services as classes with dependencies injected through their constructors. Keep service classes focused on business behavior and free of FastAPI request handling, Pydantic I/O schemas, and infrastructure construction.
+- Place each service's `new_*_service` factory in the corresponding service module. The module-level factory may use FastAPI `Request`/`Depends` to resolve dependencies and construct the service; routers declare `Depends`, while CLI callers assemble dependencies explicitly.
 - Use SQLAlchemy 2.0 AsyncEngine, async_sessionmaker and one AsyncSession per request/task with aiosqlite. Await database I/O and engine disposal; never share a session between concurrent tasks. Alembic uses the documented run_sync bridge, not a separate synchronous runtime engine.
 - The only example is a Hello welcome page and Hello API. Do not add a CRUD application or business tables without a task that asks for them.
 - Serve the built frontend from FastAPI by default. Vite is optional. Do not add Makefile or a combined development process runner.

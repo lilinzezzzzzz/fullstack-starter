@@ -1,3 +1,6 @@
+from fastapi import Request
+
+
 class HelloService:
     """Business behavior for the Hello example."""
 
@@ -6,3 +9,9 @@ class HelloService:
 
     def greet(self) -> str:
         return f"Hello, {self._application_title}!"
+
+
+def new_hello_service(request: Request) -> HelloService:
+    return HelloService(
+        application_title=request.app.state.settings.application.title,
+    )

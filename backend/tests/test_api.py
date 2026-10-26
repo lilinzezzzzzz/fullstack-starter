@@ -4,10 +4,9 @@ from fastapi.testclient import TestClient
 from starlette.exceptions import HTTPException
 
 from app.config import Settings
-from app.dependencies import new_hello_service
 from app.errors import AppError
 from app.main import create_app
-from app.services.hello import HelloService
+from app.services.hello import HelloService, new_hello_service
 
 
 def test_hello(client: TestClient, settings: Settings) -> None:

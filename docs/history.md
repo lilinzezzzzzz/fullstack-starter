@@ -4,6 +4,16 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-10-26 服务工厂与业务类同文件维护
+
+将 `new_hello_service` 移回 `backend/app/services/hello.py`，删除独立的 `backend/app/dependencies.py`；Router 和异常响应测试统一从服务模块导入工厂，继续使用 `Depends(new_hello_service)` 和对应的依赖覆盖入口。
+
+项目约定和当前设计明确区分服务类与模块级工厂：业务类通过构造参数接收依赖，不处理 FastAPI 请求、依赖解析或 Pydantic I/O Schema；同文件工厂可以承担框架适配和依赖组装。Hello 工厂仍从当前请求所属应用的配置读取标题，实例生命周期和 API 响应契约保持不变。
+
+本次 macOS、Python 3.14.7 的观察结果：完整后端测试 131 项通过，耗时 23.67 秒，包含真实 sh/PID 启停和生成项目回归；Ruff lint 与 41 个 Python 文件格式检查通过；API 类型一致性检查通过。
+
+完整测试在具备 `ps` 和进程信号权限的执行环境运行，使用任务临时目录下的配置、SQLite、日志、PID 和生成副本。本次未启停日常服务，未运行浏览器 E2E。
+
 ## 2026-10-26 Hello 依赖组装简化
 
 将 `new_hello_service` 移到 `backend/app/dependencies.py`，由它从当前应用配置读取标题并构造 `HelloService`。Router 直接声明 `Depends(new_hello_service)`，删除原有 `get_hello_service` 转发层；`services/hello.py` 只保留业务类。异常响应测试的依赖覆盖入口和当前设计同步更新。
