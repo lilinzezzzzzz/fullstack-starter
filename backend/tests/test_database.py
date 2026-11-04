@@ -6,6 +6,7 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
+from alembic import command
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -16,11 +17,11 @@ from app.database import (
     SessionDep,
     check_sqlite_version,
     create_database_engine,
-    upgrade_database,
 )
 from app.main import create_app
 from app.maintenance.backup import DatabaseBackup
 from app.service_state import ServiceError, operation_lock
+from migrations.operations import migration_config, upgrade_database
 from tests.helpers import settings_for, write_config
 
 
@@ -59,10 +60,14 @@ def test_unversioned_database_requires_explicit_migration(tmp_path: Path) -> Non
         )
 
 
-def test_baseline_has_no_business_tables(settings: Settings) -> None:
+def test_baseline_has_no_business_tables(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    command.upgrade(migration_config(settings), "0001_baseline")
     with closing(sqlite3.connect(settings.database_path)) as connection:
         tables = connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
     assert tables == [("alembic_version",)]
+    assert revision == ("0001_baseline",)
 
 
 @pytest.mark.anyio

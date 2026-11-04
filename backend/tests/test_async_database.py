@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from app.config import BACKEND_ROOT, Settings
 from app.database import create_database_engine, get_session
 from app.maintenance.backup import DatabaseBackup
+from migrations.operations import migration_heads
 
 
 def request_for_engine(engine: AsyncEngine) -> Request:
@@ -112,9 +113,8 @@ def test_backup_cli_runs_and_closes_its_async_connections(
     assert snapshot.parent == settings.backup_directory
     with closing(sqlite3.connect(snapshot)) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0001_baseline",
-        )
+        rows = connection.execute("SELECT version_num FROM alembic_version").fetchall()
+        assert {row[0] for row in rows} == migration_heads(settings)
 
 
 @pytest.mark.anyio

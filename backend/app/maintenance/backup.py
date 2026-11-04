@@ -9,7 +9,8 @@ from uuid import uuid4
 import aiosqlite
 
 from app.config import Settings
-from app.database import check_sqlite_version, migration_heads
+from app.database import check_sqlite_version
+from migrations.operations import migration_heads
 
 
 class DatabaseBackup:

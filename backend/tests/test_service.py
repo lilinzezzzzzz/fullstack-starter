@@ -9,7 +9,7 @@ from urllib.request import urlopen
 import pytest
 
 from app.config import PROJECT_ROOT, load_settings
-from app.database import upgrade_database
+from migrations.operations import upgrade_database
 from tests.helpers import read_config, save_config, write_config
 from tools import service_control
 

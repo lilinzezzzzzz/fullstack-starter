@@ -73,7 +73,13 @@ fullstack-starter/
 │   ├── tools/
 │   │   ├── __init__.py
 │   │   └── service_control.py        # 服务进程、PID 与 Uvicorn 启动
-│   ├── migrations/                   # 异步 Alembic 环境、初始版本
+│   ├── migrations/
+│   │   ├── __init__.py               # 迁移包，不在导入时执行迁移
+│   │   ├── operations.py             # Alembic 配置、head 查询、显式升级
+│   │   ├── development.py            # 临时库重放、迁移生成与检查
+│   │   ├── env.py                    # 异步 Alembic 执行环境
+│   │   ├── script.py.mako            # 新 revision 模板
+│   │   └── versions/                 # 初始版本及后续迁移历史
 │   └── tests/                        # API、配置、数据库、静态托管、启停
 ├── frontend/
 │   ├── package.json / pnpm-lock.yaml
@@ -130,9 +136,17 @@ SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用
 
 初始迁移仅建立 Alembic 版本记录。建库与升级必须显式执行维护命令，正常启动不运行迁移或 `create_all()`。Alembic 的同步命令入口管理事件循环，通过 `AsyncConnection.run_sync()` 执行 DDL 桥接，不另建同步运行时引擎。已有数据的结构变更必须审查迁移，必要时使用 SQLite batch migration。
 
+迁移代码集中在 `backend/migrations/`：`operations.py` 统一提供 Alembic 配置、head 查询和带停服保护的显式升级；`env.py` 与 `versions/` 保存执行环境和历史；`development.py` 的 `DatabaseMigrations` 负责生成和检查，同文件工厂供 CLI 组装。`app/database.py` 管理运行时连接、会话和启动版本检查，通过 `operations.py` 查询代码期望的 head。`operations.py` 只依赖配置与服务操作锁，不依赖引擎模块；`env.py` 复用引擎构造，避免循环依赖。生成与检查都先要求一个 head，在独占临时 SQLite 上重放已有迁移；生成比较 `Base.metadata` 后输出候选文件，没有结构差异时跳过空文件，手写模板需显式选择。检查重放至 head 后使用 Alembic 检测遗漏的模型变更，失败返回非零退出码。
+
+这条开发链从已完整校验的 TOML 派生临时设置，再次执行同一 Settings 校验，强制隔离数据、备份、日志、PID 和前端输出，不读写日常数据库，不使用日常服务锁；临时资源在成功或失败后清理。迁移代码仍是可信 Python，隔离不约束脚本自行访问外部资源。空库检查只覆盖重放及 Alembic 可检测的差异，旧数据保留、回填、约束和降级能力由对应 revision 的临时库回归测试证明。已交付并执行过的迁移保持不变，修正新增 revision。完整生成、审查与验证步骤见 [README](../README.md#迁移生成审查与验证)。
+
 升级期间持有与服务控制器相同的操作锁；有 PID 文件时拒绝迁移，先通过同配置的 sh 入口停服。该锁防止受管理服务启动与迁移并发，不能代替停止手动启动的服务或其他数据库使用者。
 
+迁移测试区分真实历史和合成机制：真实历史重放至 head 并比较当前模型，合成测试则自行建立独立 revision 与 metadata，覆盖测试基线和已有后续版本两个场景，不复制应用业务历史。真实 baseline 的空表断言只迁移至 `0001_baseline`；模型索引测试使用空白临时库，备份版本断言随代码期望的 head 更新。增加正常业务迁移不应改变这些测试前提。
+
 备份实现在 `maintenance/backup.py`，由 `DatabaseBackup` 类接收配置依赖，CLI 负责参数、对象组装和事件循环。aiosqlite Backup API 创建独占命名的快照，校验完整性和迁移版本，不覆盖已有文件；取消时等待已提交的复制结束、关闭连接并清理未返回的结果，继续传播取消。恢复按 README 停服、验证副本、切换数据路径，不提供网页恢复入口。
+
+需要升级前快照时，在新增或引入 revision 前使用版本匹配的代码完成备份；空库跳过。生成候选迁移后才用新代码备份旧 revision 会被版本检查拒绝，开发流程因此将备份前置，保留原有校验边界。
 
 ## 前端与接口契约
 

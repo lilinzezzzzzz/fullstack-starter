@@ -1,17 +1,19 @@
+from pathlib import Path
+
 import pytest
 from alembic.autogenerate import produce_migrations, render_python_code
 from alembic.migration import MigrationContext
 from sqlalchemy import CheckConstraint, Connection, Index, MetaData, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.config import Settings
 from app.database import create_database_engine
 from app.models import Base
+from tests.helpers import settings_for
 
 
 @pytest.mark.anyio
 async def test_representative_model_builds_and_autogenerates_distinct_indexes(
-    settings: Settings,
+    tmp_path: Path,
 ) -> None:
     class Example(Base):
         __tablename__ = "model_probe"
@@ -45,7 +47,7 @@ async def test_representative_model_builds_and_autogenerates_distinct_indexes(
         Example.metadata.create_all(connection)
         assert produce_migrations(context, Example.metadata).upgrade_ops.is_empty()
 
-    engine = create_database_engine(settings)
+    engine = create_database_engine(settings_for(tmp_path), allow_create=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(verify)

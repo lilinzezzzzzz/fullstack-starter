@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.database import upgrade_database
 from app.main import create_app
+from migrations.operations import upgrade_database
 from tests.helpers import settings_for
 
 

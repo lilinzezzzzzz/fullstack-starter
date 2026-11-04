@@ -494,6 +494,7 @@ def main() -> None:
     print("  pnpm --dir frontend install --frozen-lockfile")
     print("  pnpm --dir frontend api:types")
     print("  pnpm --dir frontend build")
+    print("  uv run --directory backend python -m app.cli db-check")
     print("  uv run --directory backend python -m app.cli db-upgrade")
     print("  sh scripts/service.sh start")
 

@@ -51,6 +51,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
         [*arguments(target, "ledger-app", "18123"), "--vite-port", "5182"],
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "python -m app.cli db-check" in result.stdout
     settings = exported_settings(target)
     assert settings["application"]["title"] == "ledger-app"
     assert settings["server"]["port"] == 18123
@@ -76,6 +77,8 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     ):
         assert not (target / relative).exists(), relative
     assert (target / "backend/migrations/versions/0001_baseline.py").is_file()
+    assert (target / "backend/migrations/development.py").is_file()
+    assert (target / "backend/migrations/operations.py").is_file()
     assert (target / "scripts/create_project.py").is_file()
     assert (target / "backend/tools/__init__.py").is_file()
     assert (target / "backend/tools/service_control.py").is_file()
@@ -105,6 +108,23 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert "http://127.0.0.1:18123/" in (target / "README.md").read_text()
     assert "不代表新项目 ledger-app 已完成验证" in (target / "docs/history.md").read_text()
     assert all((PROJECT_ROOT / name).read_bytes() == data for name, data in before.items())
+
+    migration_config = tomllib.loads((target / "configs/app.toml").read_text())
+    migration_config["testing"]["temporary_directory"] = str(tmp_path / "migration-scratch")
+    config_file = tmp_path / "migration-check.toml"
+    config_file.write_text(tomli_w.dumps(migration_config))
+    check = subprocess.run(
+        [sys.executable, "-m", "app.cli", "--config", str(config_file), "db-check"],
+        cwd=target / "backend",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert check.returncode == 0, check.stdout + check.stderr
+    assert "Migration check passed" in check.stdout
+    assert not (target / ".data").exists()
+    assert not (target / ".run").exists()
+    assert list((tmp_path / "migration-scratch").iterdir()) == []
 
 
 @pytest.mark.parametrize(
