@@ -1,4 +1,4 @@
-"""Coordinate service controllers and offline database maintenance."""
+"""协调服务控制器与离线数据库维护操作。"""
 
 import fcntl
 from collections.abc import Generator

@@ -1,4 +1,4 @@
-"""Configure Alembic and explicitly upgrade the selected application database."""
+"""配置 Alembic，并显式升级选定的应用数据库。"""
 
 from alembic import command
 from alembic.config import Config
@@ -20,7 +20,7 @@ def migration_heads(settings: Settings) -> set[str]:
 
 
 def upgrade_database(settings: Settings) -> None:
-    """Own the offline maintenance lock; env.py owns and disposes its async engine."""
+    """管理离线维护锁；异步引擎由 env.py 管理并释放。"""
     with operation_lock(settings.service.pid_file):
         if settings.service.pid_file.exists():
             raise ServiceError(

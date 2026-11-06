@@ -1,4 +1,4 @@
-"""Single-worker service lifecycle behind scripts/service.sh (macOS/Linux)."""
+"""为 scripts/service.sh 提供单工作进程的服务生命周期管理（macOS/Linux）。"""
 
 import argparse
 import asyncio
@@ -153,8 +153,8 @@ def stop_service(settings: Settings, config_file: Path) -> None:
     os.kill(pid, signal.SIGTERM)
     deadline = time.monotonic() + settings.service.shutdown_timeout_seconds
     while time.monotonic() < deadline:
-        # During normal exit macOS may replace argv before reaping the PID.
-        # Ownership was checked before SIGTERM; polling must not send more signals.
+        # 正常退出时，macOS 可能在回收进程前替换其 argv。
+        # 发送 SIGTERM 前已核实进程归属；轮询期间不得再发送信号。
         if process_info(pid, settings.service.inspection_timeout_seconds) is None:
             remove_pid(pid_file, pid)
             print(f"Stopped: PID {pid}")
@@ -218,7 +218,7 @@ async def serve(settings: Settings, ready_fd: int | None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Control the local single-worker service")
     parser.add_argument("action", choices=("start", "stop", "restart", "status", "run"))
-    # The entry file is a bootstrap convention, never a source of fallback values.
+    # 入口文件是固定的引导约定，不提供配置回退值。
     parser.add_argument("--config", type=Path, default=CONFIG_FILE)
     parser.add_argument("--ready-fd", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()

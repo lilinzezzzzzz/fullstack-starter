@@ -30,7 +30,7 @@ def create_database_engine(settings: Settings, *, allow_create: bool = False) ->
     elif not settings.database_path.is_file():
         raise RuntimeError("Database missing. Run app.cli db-upgrade with the same --config file.")
 
-    # mode=rw prevents normal startup or reconnects from silently creating an empty database.
+    # mode=rw 防止正常启动或重连时静默创建空数据库。
     url = URL.create(
         "sqlite+aiosqlite",
         database=f"file:{quote(str(settings.database_path), safe='/')}",
@@ -51,8 +51,8 @@ def create_database_engine(settings: Settings, *, allow_create: bool = False) ->
 
     @event.listens_for(engine.sync_engine, "connect")
     def configure_connection(connection, _record: object) -> None:
-        # aiosqlite's event adapter awaits driver I/O through SQLAlchemy's greenlet bridge.
-        # Disable driver BEGIN; the SQLAlchemy begin event below owns transaction control.
+        # aiosqlite 的事件适配器通过 SQLAlchemy 的 greenlet 桥接等待驱动 I/O。
+        # 禁用驱动的 BEGIN，由下方 SQLAlchemy 的 begin 事件统一控制事务。
         connection.isolation_level = None
         cursor = connection.cursor()
         try:

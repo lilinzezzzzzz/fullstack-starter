@@ -1,4 +1,4 @@
-"""Generate and check migrations against an isolated replay of the revision history."""
+"""在隔离环境中重放版本历史，并据此生成和检查迁移。"""
 
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
@@ -28,7 +28,7 @@ def discard_empty_revision(
 
 
 class DatabaseMigrations:
-    """Keep migration development independent of the configured application database."""
+    """确保迁移开发独立于配置指定的应用数据库。"""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -47,8 +47,8 @@ class DatabaseMigrations:
                 "Review the revision history before generating or checking migrations."
             )
 
-        # Complete TOML settings are already validated. These resource locations are
-        # forced isolation boundaries, not fallbacks for missing configuration fields.
+        # 完整的 TOML 配置已通过校验；这些资源路径用于强制隔离，
+        # 不作为缺失配置字段的回退值。
         values = self._settings.model_dump()
         values.update(
             data_dir=directory / "data",
@@ -88,5 +88,5 @@ class DatabaseMigrations:
 
 
 def new_database_migrations(settings: Settings) -> DatabaseMigrations:
-    """Composition factory for the maintenance CLI."""
+    """为维护 CLI 组装依赖并创建实例。"""
     return DatabaseMigrations(settings)

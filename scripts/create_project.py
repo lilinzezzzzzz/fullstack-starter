@@ -1,4 +1,4 @@
-"""Create independent projects behind scripts/create-project.sh using the standard library."""
+"""使用标准库实现 scripts/create-project.sh 的独立项目创建功能。"""
 
 import argparse
 import copy
@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_path_policy():
-    # Load only the shared standard-library policy; creation needs no app dependencies.
+    # 仅加载基于标准库的共享路径策略；创建项目无需应用依赖。
     spec = importlib.util.spec_from_file_location(
         "scaffold_path_safety", PROJECT_ROOT / "backend/app/path_safety.py"
     )
@@ -36,7 +36,7 @@ def read_toml(path: Path) -> dict:
 
 
 def update_toml(text: str, changes: dict[tuple[str, ...], object]) -> str:
-    """Edit known settings without reformatting comments or unrelated TOML values."""
+    """修改已知配置项，保留注释和无关 TOML 值的原有格式。"""
     expected = copy.deepcopy(tomllib.loads(text))
     for path, value in changes.items():
         section = expected
@@ -82,7 +82,7 @@ def update_toml(text: str, changes: dict[tuple[str, ...], object]) -> str:
 
 
 def rename_lock_project(path: Path, old_name: str, new_name: str) -> None:
-    """Rename only the virtual root record; retain all dependency versions and hashes."""
+    """仅重命名虚拟根包记录，保留所有依赖的版本和哈希。"""
     text = path.read_text(encoding="utf-8")
     expected = copy.deepcopy(tomllib.loads(text))
     matches = [

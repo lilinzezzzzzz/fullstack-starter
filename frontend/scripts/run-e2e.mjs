@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const frontendRoot = join(projectRoot, 'frontend');
 const { values } = parseArgs({ options: { config: { type: 'string' } } });
-// The only omitted argument is a bootstrap file locator, never an application value.
+// 唯一可省略的参数是引导文件路径，应用配置值均不可省略。
 const source = values.config === undefined ? canonicalConfig : resolve(projectRoot, values.config);
 const settings = readProjectSettings(source);
 const parent = settings.testing.temporary_directory;

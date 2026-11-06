@@ -1,9 +1,8 @@
-"""Standard-library path policy shared by configuration and project creation.
+"""供配置校验和项目创建共用的标准库路径策略。
 
-Comparisons deliberately fold path case. The project supports macOS, whose
-default filesystem is case-insensitive while ``Path.resolve`` preserves the
-case supplied by the caller. Treating case-only aliases as distinct would let
-a source or runtime directory bypass the protectors below.
+比较路径时刻意忽略大小写。项目支持 macOS，其默认文件系统不区分大小写，
+而 ``Path.resolve`` 会保留调用方提供的大小写。若将仅大小写不同的路径视为
+不同路径，源代码目录或运行时目录就可能绕过下方的保护检查。
 """
 
 from pathlib import Path
@@ -39,12 +38,12 @@ def _folded_parts(path: str | Path) -> tuple[str, ...]:
 
 
 def paths_equal(first: str | Path, second: str | Path) -> bool:
-    """Compare resolved paths without allowing case-only aliases to bypass policy."""
+    """比较解析后的路径，防止仅大小写不同的别名绕过策略。"""
     return _folded_parts(first) == _folded_parts(second)
 
 
 def path_is_relative_to(path: str | Path, parent: str | Path) -> bool:
-    """Return whether ``path`` is ``parent`` or below it, ignoring path case."""
+    """忽略大小写，判断 ``path`` 是否为 ``parent`` 本身或其子路径。"""
     child_parts = _folded_parts(path)
     parent_parts = _folded_parts(parent)
     return (
@@ -57,7 +56,7 @@ def paths_overlap(first: str | Path, second: str | Path) -> bool:
 
 
 def same_entry(first: str | Path, second: str | Path) -> bool:
-    """Compare filesystem entries when they exist, otherwise compare exact paths."""
+    """文件系统条目存在时比较条目，否则精确比较路径。"""
     first_path = Path(first).resolve()
     second_path = Path(second).resolve()
     try:
@@ -105,7 +104,7 @@ def validate_runtime_paths(
     for field, path in {"frontend_dir": public, **private_paths}.items():
         candidates = protected_paths if field == "frontend_dir" else source_paths
         for protected in candidates:
-            # Only the real frontend/dist subtree may hold public output inside frontend/.
+            # frontend/ 内仅允许实际的 frontend/dist 子树存放公开构建产物。
             if field == "frontend_dir" and paths_equal(protected, project_root / "frontend"):
                 if path_is_relative_to(path, default_output):
                     continue
@@ -156,8 +155,8 @@ def validate_runtime_paths(
     temporary = (project_root / temporary_directory).resolve()
     if paths_equal(pid_path, temporary):
         raise ValueError("service.pid_file must not point at the testing directory")
-    # This is a parent for mkdtemp, not a directory owned or deleted by the runner.
-    # An external parent such as /tmp may contain a generated project.
+    # 此处是 mkdtemp 的父目录，不由运行器管理或删除。
+    # /tmp 等外部父目录中可能包含已生成的项目。
     if paths_equal(temporary, project_root) or any(
         path_is_relative_to(temporary, source) for source in source_paths
     ):

@@ -12,7 +12,7 @@ from tests.helpers import settings_for
 
 @pytest.fixture
 def anyio_backend() -> str:
-    # SQLAlchemy's aiosqlite driver uses asyncio; this is a test backend contract.
+    # SQLAlchemy 的 aiosqlite 驱动使用 asyncio；这是测试后端的固定约定。
     return "asyncio"
 
 

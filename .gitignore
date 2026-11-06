@@ -3,7 +3,7 @@
 .DS_Store
 .data/
 .run/
-# Keep legacy local data ignored after the default directory rename.
+# 默认目录更名后，继续忽略旧版的本地数据目录。
 data/
 logs/
 *.pid
@@ -13,7 +13,7 @@ logs/
 *.sqlite3-wal
 *.sqlite3-shm
 configs/*.local.toml
-# Deprecated private local files stay ignored, but are not loaded.
+# 继续忽略已弃用的本地私有配置文件，但不再加载它们。
 configs/*.local.json
 **/__pycache__/
 **/*.pyc

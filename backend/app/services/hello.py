@@ -2,7 +2,7 @@ from functools import cache
 
 
 class HelloService:
-    """Business behavior for the Hello example."""
+    """Hello 示例的业务行为。"""
 
     def greet(self) -> str:
         return "Hello World"

@@ -16,7 +16,7 @@ def check_frontend_directory(directory: Path) -> None:
 
 
 class FrontendFiles(StaticFiles):
-    """Serve only build files; reserve API paths and constrain HTML fallback."""
+    """仅提供构建产物，保留 API 路径并限制 HTML 回退范围。"""
 
     def __init__(self, directory: Path, reserved_paths: list[str]) -> None:
         self.reserved_paths = {path.strip("/") for path in reserved_paths}

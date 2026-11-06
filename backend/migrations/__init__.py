@@ -1,1 +1,1 @@
-"""Alembic environment, revision history, and local migration development tools."""
+"""Alembic 环境、版本历史及本地迁移开发工具。"""

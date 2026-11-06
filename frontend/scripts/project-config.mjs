@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
-// A bootstrap locator, not an application parameter fallback.
+// 引导文件路径，不作为应用参数的回退值。
 export const configFile = resolve(projectRoot, 'configs/app.toml');
 
 export function readProjectSettings(path) {
@@ -26,7 +26,7 @@ export function readProjectSettings(path) {
 }
 
 export function browserDefinitions(settings) {
-  // Never publish the complete server configuration or its filesystem paths.
+  // 不得向浏览器暴露完整服务端配置或其文件系统路径。
   return {
     __CLIENT_CONFIG__: JSON.stringify(settings.client),
     __APPLICATION_INFO__: JSON.stringify({
