@@ -1,7 +1,8 @@
 from time import perf_counter
-from uuid import uuid4
 
 from loguru import logger
+from opentelemetry.propagate import inject
+from opentelemetry.trace import format_trace_id, get_current_span
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -21,8 +22,16 @@ class RequestMiddleware:
             return
 
         request = Request(scope)
-        request_id = uuid4().hex
-        request.state.request_id = request_id
+        span_context = get_current_span().get_span_context()
+        if not span_context.is_valid:
+            raise RuntimeError("FastAPI native telemetry did not create a valid request context")
+        trace_id = format_trace_id(span_context.trace_id)
+        carrier: dict[str, str] = {}
+        inject(carrier)
+        traceparent = carrier["traceparent"]
+        request.state.trace_id = trace_id
+        # 保留当前服务端上下文，供中间件退出后的 500 响应共用。
+        request.state.traceparent = traceparent
         started = perf_counter()
         status_code = 500
 
@@ -31,13 +40,13 @@ class RequestMiddleware:
             if message["type"] == "http.response.start":
                 status_code = message["status"]
                 headers = MutableHeaders(scope=message)
-                headers["X-Request-ID"] = request_id
+                headers["traceparent"] = traceparent
                 headers["X-Content-Type-Options"] = "nosniff"
                 if scope["path"].startswith("/api"):
                     headers["Cache-Control"] = "no-store"
             await send(message)
 
-        with logger.contextualize(request_id=request_id):
+        with logger.contextualize(trace_id=trace_id):
             try:
                 try:
                     hostname = request.url.hostname

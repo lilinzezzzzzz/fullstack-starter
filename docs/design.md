@@ -57,12 +57,16 @@ fullstack-starter/
 │   ├── app/
 │   │   ├── main.py                   # 应用工厂和 lifespan
 │   │   ├── config.py                 # 配置读取、校验和路径解析
+│   │   ├── telemetry/                # 原生 telemetry 上下文装配
+│   │   │   ├── __init__.py            # 轻量工厂导出入口
+│   │   │   ├── environment.py         # 导入前环境隔离和 TOML 白名单桥接
+│   │   │   └── provider.py            # 本地 SDK provider 和全局传播器装配
 │   │   ├── path_safety.py            # 大小写/符号链接安全的运行路径边界
 │   │   ├── service_state.py          # 启停与离线迁移共用的操作锁
 │   │   ├── database.py               # 异步引擎、会话依赖和版本检查
 │   │   ├── api.py                    # API 路由装配
 │   │   ├── frontend.py               # 静态托管与 SPA 回退边界
-│   │   ├── errors.py / middleware.py # 错误、请求标识和访问边界
+│   │   ├── errors.py / middleware.py # 错误、链路标识和访问边界
 │   │   ├── logging_setup.py           # 日志初始化与 Uvicorn 桥接
 │   │   ├── cli.py                    # 配置/OpenAPI 导出、迁移、备份命令
 │   │   ├── routers/                  # hello.py、health.py
@@ -144,7 +148,7 @@ SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用
 
 迁移测试区分真实历史和合成机制：真实历史重放至 head 并比较当前模型，合成测试则自行建立独立 revision 与 metadata，覆盖测试基线和已有后续版本两个场景，不复制应用业务历史。真实 baseline 的空表断言只迁移至 `0001_baseline`；模型索引测试使用空白临时库，备份版本断言随代码期望的 head 更新。增加正常业务迁移不应改变这些测试前提。
 
-备份实现在 `maintenance/backup.py`，由 `DatabaseBackup` 类接收配置依赖，CLI 负责参数、对象组装和事件循环。aiosqlite Backup API 创建独占命名的快照，校验完整性和迁移版本，不覆盖已有文件；取消时等待已提交的复制结束、关闭连接并清理未返回的结果，继续传播取消。恢复按 README 停服、验证副本、切换数据路径，不提供网页恢复入口。
+备份实现在 `maintenance/backup.py`，由 `DatabaseBackup` 类接收配置依赖，CLI 负责参数、对象组装和事件循环。aiosqlite Backup API 创建独占命名的快照，文件名包含 UTC 时间戳和完整 UUIDv7 十六进制值；校验完整性和迁移版本，不覆盖已有文件。取消时等待已提交的复制结束、关闭连接并清理未返回的结果，继续传播取消。恢复按 README 停服、验证副本、切换数据路径，不提供网页恢复入口。
 
 需要升级前快照时，在新增或引入 revision 前使用版本匹配的代码完成备份；空库跳过。生成候选迁移后才用新代码备份旧 revision 会被版本检查拒绝，开发流程因此将备份前置，保留原有校验边界。
 
@@ -159,15 +163,25 @@ TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取�
 | `/`、`/welcome` | Hello 欢迎页，可直接访问和刷新 |
 | `/docs`、`/openapi.json` | 文档与 Schema；开关和路径来自配置 |
 
-成功响应直接返回 Schema；错误统一为 `code`、`message`、`details`、`request_id`。未预期的内部细节进入日志，不返回给浏览器。未知 API 和缺失静态资源返回真实 404；仅页面导航可回退到 SPA HTML。查询按配置有限重试，写请求重试次数必须显式配置为 0。
+成功响应直接返回 Schema；错误统一为 `code`、`message`、`details`、`trace_id`。未预期的内部细节进入日志，不返回给浏览器。未知 API 和缺失静态资源返回真实 404；仅页面导航可回退到 SPA HTML。查询按配置有限重试，写请求重试次数必须显式配置为 0。
 
-错误响应统一保留请求标识、no-store 和 nosniff；HTTP 异常仅透传 Allow、WWW-Authenticate、Retry-After 协议头。FastAPI 原生 OpenTelemetry 明确关闭，业务项目按需另行接入；Loguru 保持现有职责。
+FastAPI 原生 telemetry 使用应用显式创建的本地 SDK `TracerProvider` 管理请求上下文。官方 W3C propagator 解析 `traceparent`：有效时继承 trace ID，缺失或无效时由 SDK 创建新的 trace ID；每次请求均创建新的服务端 span ID。ID 由 SDK 的随机生成器提供，不再校验 UUID 版本。字段长度、大小写、全零值和版本扩展由官方解析器判断；1.45.1 容忍头部两端空白，对重复请求头使用首个值，不叠加自定义解析规则。[FastAPI 原生 telemetry](https://fastapi.tiangolo.com/advanced/opentelemetry/)
+
+采样器固定为 `ALWAYS_OFF`。原生请求 span 使用不记录数据的上下文；metrics、OTel logs、operation_spans、SDK 内部指标与自动导出全部关闭，provider 不注册采集/导出 processor 或 exporter。即使上游标记为采样，也不会启用本地记录。业务项目如需采集，应另行设计配置和数据处理边界。
+
+请求中间件读取当前有效 span 的 trace ID，并写入 `request.state.trace_id`、Loguru 上下文和错误体。官方 propagator 在请求入口将本次服务端上下文序列化为 `traceparent`，保存在请求状态，并用于正常和错误响应头。格式为 `00-<32 位 trace ID>-<16 位服务端 span ID>-<2 位 flags>`；服务端 span ID 与上游 parent ID 不同，flags 采用 SDK 当前值，采样位关闭。只返回 `traceparent`，不额外回传 `tracestate`。
+
+500 处理器从请求状态恢复日志上下文和保存的响应头，保证中间件退出后仍关联本次服务端 span。同一链路的请求可以共享 trace ID；不再提供 `X-Trace-ID`、`request_id` 或 `X-Request-ID`。错误响应继续保留 no-store 和 nosniff，HTTP 异常仅透传 Allow、WWW-Authenticate、Retry-After 协议头。前端错误对象继续从错误体读取 `trace_id`，不依赖自定义响应头。
+
+`app/__init__.py` 在第三方模块导入前丢弃继承的遥测环境值；`telemetry/environment.py` 在应用构建阶段将 TOML 中的必要项写入固定白名单，`telemetry/provider.py` 通过公开参数传入采样器、ID 生成器、Resource 和全部 SpanLimits，并显式安装 W3C tracecontext propagator。直接构造 Resource 以避免自动环境探测；应用不替换全局 tracer/meter/logger provider。进程级环境和 propagator 由该单应用入口管理，不支持在同一进程热切换上下文实现或传播协议。完整映射见 [配置约定](configuration.md#遥测上下文与环境隔离)。
+
+provider 不注册进程退出钩子，由 lifespan 在正常退出和启动失败时关闭；OpenAPI CLI 在无 lifespan 的导出路径显式关闭 provider。导入应用和导出 OpenAPI 不访问数据库，也不要求已有前端构建产物。
 
 接口类型链路为 Pydantic Schema → CLI 导出 OpenAPI → openapi-typescript → `api.generated.d.ts`。生成文件由生成器维护，Prettier 忽略它；检查模式发现过期类型时失败而不改写文件。编译期类型不能代替服务端运行时校验。后续业务的时间按 UTC 保存和输出，API 使用带时区的 ISO 8601。
 
 ## 配置、访问与进程边界
 
-全部 86 个叶子配置项及其分组均必填，唯一入口为 `configs/app.toml`。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
+全部 107 个叶子配置项及其分组均必填，唯一入口为 `configs/app.toml`。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
 
 相对数据、备份、日志、PID 和前端路径一律相对于项目根目录。构建工具复用 Python 校验器，只把 `client` 和应用标题/版本注入浏览器，私有路径和完整服务配置不打包。后端参数改动需重启，前端公开参数改动需重新构建。工具自身的 PATH、缓存位置和浏览器安装目录不作为应用配置来源。
 
@@ -175,14 +189,14 @@ TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取�
 
 服务始终单 worker，由 sh 入口管理。实际监听成功后才写入 PID；重复启动复用现有进程。停止前检查模块和启动配置路径，再发送 SIGTERM；正常退出清理 PID，超时保留且不强制杀进程，不按端口选择进程。启停必须使用同一配置文件路径，修改 PID 路径前先停止服务。
 
-Loguru 将应用、请求标识和 Uvicorn 日志写入配置目录；启动早期输出进入独立的 `service.log`。不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
+Loguru 将应用、链路标识和 Uvicorn 日志写入配置目录；启动早期输出进入独立的 `service.log`。不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
 
 ## V1 范围与验收
 
 | V1 内容 | 验收行为 |
 | --- | --- |
 | Hello 示例 | 唯一示例页面与 API，展示真实连通状态、加载、错误与重试 |
-| 后端基础 | 应用工厂、严格配置、健康检查、统一错误、请求标识与日志 |
+| 后端基础 | 应用工厂、严格配置、健康检查、统一错误、链路标识与日志 |
 | 数据基础 | AsyncSession、显式事务、版本检查、初始迁移和手动备份 |
 | 运行管理 | 单 FastAPI 服务、前端托管、可选 Vite、sh/PID 安全启停 |
 | 接口协作 | 无副作用的 OpenAPI 导出、生成类型和一致性检查 |

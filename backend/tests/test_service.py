@@ -4,13 +4,13 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
 from app.config import PROJECT_ROOT, load_settings
 from migrations.operations import upgrade_database
-from tests.helpers import read_config, save_config, write_config
+from tests.helpers import read_config, response_trace_id, save_config, write_config
 from tools import service_control
 
 
@@ -151,6 +151,11 @@ def test_shell_start_status_restart_stop_and_stale_pid(
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "must-not-be-used"))
     monkeypatch.setenv("WEB_CONCURRENCY", "8")
     monkeypatch.setenv("LOGURU_LEVEL", "ERROR")
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    monkeypatch.setenv("OTEL_PROPAGATORS", "not-installed-propagator")
+    monkeypatch.setenv("OTEL_PYTHON_CONTEXT", "not-installed-context")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+    monkeypatch.setenv("FASTAPI_OTEL_AUTO_CONFIGURE", "true")
     try:
         controller(config, "start")
         first_pid = service_control.read_pid(settings.service.pid_file)
@@ -171,9 +176,20 @@ def test_shell_start_status_restart_stop_and_stale_pid(
         assert migration.returncode == 1
         assert "Stop the service" in migration.stderr
         with urlopen(
-            f"http://127.0.0.1:{settings.server.port}/api/v1/hello", timeout=3
+            Request(
+                f"http://127.0.0.1:{settings.server.port}/api/v1/hello",
+                headers={"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"},
+            ),
+            timeout=3,
         ) as response:
             assert json.load(response) == {"message": "Hello World"}
+            assert response_trace_id(response.headers) == "4bf92f3577b34da6a3ce929d0e0e4736"
+        with urlopen(
+            f"http://127.0.0.1:{settings.server.port}/api/v1/hello", timeout=3
+        ) as response:
+            identifier = response_trace_id(response.headers)
+            assert len(identifier) == 32 and int(identifier, 16) != 0
+            assert identifier != "4bf92f3577b34da6a3ce929d0e0e4736"
         controller(config, "restart")
         assert service_control.read_pid(settings.service.pid_file) != first_pid
         controller(config, "stop")

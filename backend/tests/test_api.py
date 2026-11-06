@@ -3,12 +3,14 @@ from typing import Annotated
 import pytest
 from fastapi import Depends, Query
 from fastapi.testclient import TestClient
+from opentelemetry.trace import format_span_id, get_current_span
 from starlette.exceptions import HTTPException
 
 from app.config import Settings
 from app.errors import AppError
 from app.main import create_app
 from app.services.hello import HelloService, new_hello_service
+from tests.helpers import response_trace_context, response_trace_id
 
 
 def test_hello(client: TestClient) -> None:
@@ -66,7 +68,7 @@ def test_http_error_preserves_protocol_headers_without_overriding_safety_headers
     def fail() -> None:
         raise HTTPException(
             status,
-            headers={name: value, "Cache-Control": "public", "X-Request-ID": "untrusted"},
+            headers={name: value, "Cache-Control": "public", "traceparent": "untrusted"},
         )
 
     with TestClient(app, base_url="http://127.0.0.1") as client:
@@ -75,23 +77,28 @@ def test_http_error_preserves_protocol_headers_without_overriding_safety_headers
     assert response.headers[name] == value
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
-    assert response.headers["x-request-id"] != "untrusted"
+    assert response_trace_id(response.headers) != "untrusted"
 
 
 def test_unknown_api_has_uniform_error(client: TestClient) -> None:
     response = client.get("/api/not-found", headers={"accept": "text/html"})
     assert response.status_code == 404
     body = response.json()
-    assert set(body) == {"code", "message", "details", "request_id"}
+    assert set(body) == {"code", "message", "details", "trace_id"}
     assert body["code"] == "NOT_FOUND"
-    assert body["request_id"] == response.headers["x-request-id"]
+    assert body["trace_id"] == response_trace_id(response.headers)
 
 
-def test_request_ids_are_generated_per_request(client: TestClient) -> None:
-    first = client.get("/api/v1/hello", headers={"x-request-id": "untrusted-id"})
+def test_missing_traceparent_generates_trace_ids_per_request(client: TestClient) -> None:
+    first = client.get("/api/v1/hello", headers={"x-trace-id": "untrusted-id"})
     second = client.get("/api/v1/hello")
-    assert first.headers["x-request-id"] != "untrusted-id"
-    assert first.headers["x-request-id"] != second.headers["x-request-id"]
+    assert response_trace_id(first.headers) != "untrusted-id"
+    assert response_trace_id(first.headers) != response_trace_id(second.headers)
+    for response in (first, second):
+        trace_id = response_trace_id(response.headers)
+        assert len(trace_id) == 32
+        assert trace_id == trace_id.lower()
+        assert int(trace_id, 16) != 0
 
 
 @pytest.mark.parametrize(
@@ -106,10 +113,15 @@ def test_request_ids_are_generated_per_request(client: TestClient) -> None:
 def test_local_access_boundaries(
     client: TestClient, headers: dict[str, str], status: int, code: str
 ) -> None:
-    response = client.get("/api/v1/hello", headers=headers)
+    trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+    response = client.get(
+        "/api/v1/hello",
+        headers={"traceparent": f"00-{trace_id}-00f067aa0ba902b7-01", **headers},
+    )
     assert response.status_code == status
     assert response.json()["code"] == code
-    assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert response.json()["trace_id"] == response_trace_id(response.headers)
+    assert response.json()["trace_id"] == trace_id
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
@@ -147,21 +159,32 @@ def test_application_and_validation_errors(settings: Settings) -> None:
         assert failure.json()["code"] == "EXAMPLE_ERROR"
 
 
-def test_unexpected_error_is_safe(settings: Settings) -> None:
+@pytest.mark.parametrize(
+    "traceparent", [None, "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"]
+)
+def test_unexpected_error_is_safe(settings: Settings, traceparent: str | None) -> None:
+    observed_span_ids: list[str] = []
+
     class FailingHelloService(HelloService):
         def greet(self) -> str:
+            observed_span_ids.append(format_span_id(get_current_span().get_span_context().span_id))
             raise RuntimeError("private implementation detail")
 
     app = create_app(settings)
     app.dependency_overrides[new_hello_service] = lambda: FailingHelloService()
     with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
-        response = client.get("/api/v1/hello")
+        response = client.get(
+            "/api/v1/hello", headers={"traceparent": traceparent} if traceparent else {}
+        )
     assert response.status_code == 500
     assert response.json()["code"] == "INTERNAL_ERROR"
     assert "private implementation" not in response.text
-    assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert response.json()["trace_id"] == response_trace_id(response.headers)
+    assert format_span_id(response_trace_context(response.headers).span_id) == observed_span_ids[0]
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["cache-control"] == "no-store"
     contents = (settings.logging.directory / settings.logging.filename).read_text()
-    assert response.headers["x-request-id"] in contents
-    assert "Unhandled request error" in contents
+    failure_log = next(line for line in contents.splitlines() if "Unhandled request error" in line)
+    assert response_trace_id(response.headers) in failure_log
+    if traceparent is not None:
+        assert response_trace_id(response.headers) == "4bf92f3577b34da6a3ce929d0e0e4736"

@@ -15,7 +15,7 @@ from migrations.operations import upgrade_database
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Local scaffold maintenance")
-    # A fixed bootstrap file locator; it supplies no application parameter defaults.
+    # 固定的引导文件路径，不提供应用参数默认值。
     parser.add_argument("--config", type=Path, default=CONFIG_FILE)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("export-openapi", help="Write OpenAPI JSON without starting services")
@@ -39,7 +39,12 @@ def main() -> None:
             from app.main import create_app
 
             application = create_app(settings)
-            print(json.dumps(application.openapi(), ensure_ascii=False, indent=2, sort_keys=True))
+            try:
+                print(
+                    json.dumps(application.openapi(), ensure_ascii=False, indent=2, sort_keys=True)
+                )
+            finally:
+                application.state.tracer_provider.shutdown()
         elif args.command == "db-upgrade":
             upgrade_database(settings)
             print(f"Database schema is current: {settings.database_path}")

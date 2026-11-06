@@ -4,6 +4,75 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-06 提交前最终回归
+
+遥测包整理后的最终工作区完整后端测试 214 项通过，耗时 27.33 秒，包含 3 项真实服务集成测试；Ruff lint 与 49 个 Python 文件格式检查、uv 锁文件检查、前端 ESLint、TypeScript、Prettier 和 API 类型一致性检查均通过。
+
+本次使用任务临时配置、SQLite、日志、PID 和生成项目，测试服务正常停止；未执行生产构建或浏览器 E2E，未操作日常服务或数据库。此处记录提交前观察结果，提交与推送状态以 Git 记录为准。
+
+## 2026-11-06 遥测模块收拢为包
+
+将原 `app/telemetry.py` 和 `app/telemetry_environment.py` 收拢到 `app/telemetry/`：`provider.py` 管理 SDK provider 装配，`environment.py` 管理导入前环境清理及 TOML 白名单桥接，`__init__.py` 导出 `new_tracer_provider`，保留原有 `app.telemetry` 工厂入口。根包的环境清理导入改为新路径，当前设计目录树和职责路径同步更新，历史记录保留当时文件名。
+
+provider 的 Settings 引用仅在类型检查阶段导入，确保根包加载环境清理入口时不会提前引入配置或 SDK。新增全新进程回归：注入冲突环境后，导入 `app` 与遥测包能清理外部 OTEL 设置，且没有提前加载配置、FastAPI、Pydantic 或 OTel 模块。
+
+本次 telemetry、traceparent 和项目创建定向回归 77 项通过，耗时 11.03 秒；Ruff lint、49 个 Python 文件格式检查及 API 类型一致性检查通过，Git diff 空白检查通过。原有暂存内容保持不变，本次未暂存或提交，未重跑完整后端测试或浏览器 E2E，未操作日常服务或数据库。
+
+## 2026-11-06 响应采用 traceparent
+
+正常及错误响应改为返回标准 `traceparent` 头，移除 `X-Trace-ID`。中间件使用官方 propagator 序列化 SDK 当前服务端上下文，将完整值保存在请求状态，供中间件退出后的 500 处理器复用。响应包含本次服务端的 span ID，不原样回显上游 parent ID；flags 来自 SDK，采样位保持关闭。错误体和 Loguru 仍使用同一个 `trace_id`；前端错误对象继续从错误体读取，无需新增客户端解析逻辑。仅返回 `traceparent`，不额外回传 `tracestate`。
+
+新增回归核对响应的 trace ID、span ID 和 flags 与实际服务端上下文相同，并验证 500 响应 span ID 与抛错位置一致。共享响应校验覆盖完整头格式、非零 ID、采样关闭及旧头缺席，真实 sh/HTTP 测试和冲突环境子进程也按此契约校验。浏览器 E2E 用例已补充响应头与错误体的关联断言。
+
+本次完整后端测试 213 项通过，耗时 29.46 秒，包含 3 项真实服务集成测试；Ruff lint 和格式检查通过（48 个 Python 文件）。前端 ESLint、TypeScript、Prettier 与 API 类型一致性检查通过；5 份文档的 28 个本地链接、标题锚点和代码块闭合检查通过；Git diff 空白检查通过，原有暂存内容校验值保持不变。
+
+本次未运行生产构建或浏览器 E2E，未启停日常服务或操作日常数据库。测试仅使用任务临时目录，测试服务已停止；本次改动未暂存或提交。
+
+## 2026-11-06 FastAPI 原生 telemetry 与 TOML 隔离
+
+用 FastAPI 原生 telemetry 和本地 OTel SDK provider 替换手写 `traceparent` 解析及请求中的 UUIDv7 生成。官方传播器继承有效 trace ID，缺失或无效时由 SDK 创建新上下文；每次请求有独立的服务端 span ID。继续统一使用 `trace_id` / `X-Trace-ID`，不保留旧字段。SDK ID 不再受 UUIDv7 版本约束，备份的 UUIDv7 命名保持原有行为。官方解析器容忍头部两端空白，并对重复头使用首个值。
+
+应用包先清理继承的 `OTEL_*` / `FASTAPI_OTEL_*` 环境；新增 `telemetry_environment.py` 将 TOML 值桥接到固定白名单，`telemetry.py` 通过公开参数传入采样器、ID 生成器、Resource 和全部 SpanLimits。21 个新增叶子字段均为必填，当前合计 107 项。校验器约束上下文启用、ALWAYS_OFF 采样、指标/OTel 日志/操作 span/内部指标/自动导出关闭，provider 使用空 processor 聚合器，不注册采集或导出 processor。API/SDK 锁定为 1.45.1，仅新增 SDK 及其 semantic-conventions 依赖，未升级原有依赖。provider 在 lifespan 正常结束或启动失败时关闭，OpenAPI CLI 显式关闭导出所用 provider。
+
+本次 Python 3.14.7、Node 24.22.0 的观察结果：
+
+| 检查 | 观察结果 |
+| --- | --- |
+| 完整后端回归 | 212 项通过，耗时 29.43 秒，包含 3 项真实 sh/PID 服务测试 |
+| 启动入口增强回归 | 在真实 sh 启停测试中加入冲突的 SDK 禁用、context、propagator、导出环境；继承入站 trace ID 与无头时 SDK 生成新 ID 均通过，1 项通过，耗时 8.43 秒 |
+| 隔离与上下文测试 | 全新进程注入冲突环境后，导入/OpenAPI 不依赖数据库或前端；测试库建立后正常请求和错误体关联一致；SDK 非记录上下文、独立 span ID、并发隔离、取消清理和 provider 关闭通过 |
+| 配置与静态检查 | 逐项删除全部配置字段/分组会失败；关闭上下文或开启采集的值被拒绝；Ruff lint 和格式检查通过，覆盖 48 个 Python 文件 |
+| 锁文件与前端契约 | uv 锁检查通过；前端 ESLint、TypeScript、Prettier 与 API 类型一致性检查通过 |
+| 文档与工作区 | 5 份文档的 28 个本地链接、标题锚点及代码块闭合检查通过；107 个配置叶子项在字段表中完整覆盖；原有暂存内容校验值保持不变 |
+
+测试配置、SQLite、日志、PID 和生成项目均位于任务临时目录，测试服务由原配置的 sh 入口停止。本次未启停日常服务、未操作日常数据库、未运行生产构建或浏览器 E2E；本次改动未暂存或提交。
+
+## 2026-11-06 轻量 traceparent 关联
+
+请求中间件仅使用标准库解析入站 `traceparent`，校验已知字段并提取 `trace_id`；缺失、无效或重复时生成 UUIDv7。请求状态、Loguru 上下文、`X-Trace-ID` 响应头和错误体统一使用该值，500 处理器恢复相同日志上下文。同一链路的请求可以共享标识。移除旧 `request_id` / `X-Request-ID` 契约，前端错误对象改为 `ApiError.traceId`，API 类型已重新生成；项目规则、README、设计和配置边界同步更新。
+
+此改动不新增依赖或配置字段，不创建 span，不执行出站上下文注入，也不初始化 SDK、provider 或 exporter；FastAPI 自动遥测继续关闭。前端指导检索没有适用于本次接口字段改名的条目，未引入额外浏览器能力。
+
+本次 Python 3.14.7、Node 24.22.0 的观察结果：完整后端测试 190 项通过，耗时 25.10 秒，包含 3 项真实服务集成测试；Ruff lint 和格式检查通过（46 个 Python 文件）；前端 ESLint、TypeScript、Prettier、API 类型一致性检查通过。新增回归覆盖合法头、无效与重复头、版本兼容、同链路复用及并发日志上下文隔离；已有访问边界和 500 回归验证头、错误体及日志标识一致，遥测关闭测试也传入了有效的采样请求头。
+
+测试使用任务临时目录中的配置、SQLite、日志、PID 和生成项目。本次未启停日常服务或操作日常数据库，未运行生产构建或浏览器 E2E。
+
+## 2026-11-06 UUIDv7 标识
+
+将请求标识、备份文件名和项目创建测试目录中的三处 UUIDv4 调用改为 Python 3.14 标准库的 UUIDv7。请求标识保留原有的 32 位小写十六进制格式；备份后缀改用完整 UUID，避免截取时间戳前缀而丢失唯一性信息。旧备份文件无需更名，独占创建和备份校验逻辑保持不变。设计文档同步标识格式。
+
+请求标识测试补充格式及 UUID 版本断言；新增冻结文件名时间戳后连续创建快照的回归，检查两个文件均保留且后缀为完整 UUIDv7。修改前，这两项检查分别在版本和长度断言处失败。回归同时发现上一轮注释中文化遗漏了项目创建测试中的英文注释断言，已同步修正。
+
+本次定向回归 67 项通过，覆盖 API、数据库、异步备份、日志和项目创建，耗时 10.19 秒；Ruff lint 与格式检查通过（45 个 Python 文件）。测试使用任务临时目录中的配置、SQLite、日志和生成项目；未启停日常服务或操作日常数据库，未运行完整后端测试或浏览器 E2E。
+
+## 2026-11-06 注释中文化
+
+将后端、迁移工具、项目创建脚本、配置文件和前端中的英文说明性注释及 Python docstring 翻译为中文，保留命令、路径、标识符和工具标记。API 类型生成器仅对传入生成流程的 OpenAPI 标题、摘要和描述进行中文映射，并重新生成类型文件；后端导出的 OpenAPI 不受该映射影响。
+
+本次使用项目指定的 Node 24.22.0：Ruff lint 与格式检查通过（45 个 Python 文件）；前端 ESLint、TypeScript、Prettier 和 API 类型一致性检查通过。20 个修改过的 Python 文件去除 docstring 后 AST 一致；5 个修改过的前端文件（包含生成类型，不含生成器）去除注释后内容一致；TOML 配置值、忽略规则和 shell 命令一致。受 Git 跟踪的 Python 注释与 docstring 检查、前端和配置说明性注释扫描均未发现遗漏的纯英文说明。
+
+本次未运行后端测试、生产构建或浏览器 E2E，未启停日常服务或操作日常数据库。
+
 ## 2026-11-04 迁移操作归位与测试隔离修正
 
 将 `migration_config()`、`migration_heads()` 和 `upgrade_database()` 从 `app/database.py` 收拢到 `migrations/operations.py`，更新 CLI、备份、开发工具和测试的调用入口。运行时引擎、会话和启动版本检查仍由 `app/database.py` 管理；操作模块只依赖配置与服务操作锁，不反向依赖引擎模块。显式升级保留原有互斥锁和 PID 拒绝规则。

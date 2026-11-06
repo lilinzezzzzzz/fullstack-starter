@@ -9,9 +9,10 @@
 - Serve the built frontend from FastAPI by default. Vite is optional. Do not add Makefile or a combined development process runner.
 - Importing the app and exporting OpenAPI must not connect to a database or require frontend build output. Lifespan performs runtime checks.
 - Schema changes use Alembic. Do not silently upgrade existing databases on application startup.
-- API errors have `code`, `message`, `details`, and `request_id`. Unknown API and asset paths must not return the SPA HTML.
+- API errors have `code`, `message`, `details`, and `trace_id`. Return the current server context in the standard `traceparent` response header, never `X-Trace-ID`. Unknown API and asset paths must not return the SPA HTML.
 - Read application settings only from explicit TOML configuration files (`configs/app.toml` is the bootstrap entry). Never use environment variables or `.env` as application configuration sources. Resolve relative paths from the project root.
 - All configuration fields are required. Never use model defaults or fallback expressions to supply missing settings. Keep protocol and safety invariants in code; document the configuration boundary in `docs/configuration.md`.
+- Use FastAPI native telemetry with a local SDK provider only for trace context. Require explicit TOML settings, ALWAYS_OFF sampling, and disabled collection/export. Clear inherited OTEL namespaces before third-party imports; bridge only the documented TOML whitelist during application construction. Lifespan owns provider shutdown; OpenAPI export closes its provider explicitly.
 - Validate build settings through the same Python loader. Inject only public client settings and application title/version into the browser. Frontend setting changes require a rebuild.
 - Use Loguru for application and Uvicorn logs. Keep logs, databases, backups, PID files, dependencies, and build output out of Git.
 - Run one API worker. Control it through `scripts/service.sh`; record the actual service PID after readiness and verify process ownership before signalling. Never kill a process merely because it holds a port.

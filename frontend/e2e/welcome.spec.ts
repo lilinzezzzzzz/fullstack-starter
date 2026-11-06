@@ -15,7 +15,13 @@ test('single FastAPI service serves Hello, assets and client-side navigation', a
   await expect(page.getByText('前后端已连通')).toBeVisible();
   const missingAPI = await request.get('/api/missing', { headers: { Accept: 'text/html' } });
   expect(missingAPI.status()).toBe(404);
-  expect((await missingAPI.json()).code).toBe('NOT_FOUND');
+  const errorBody = await missingAPI.json();
+  const traceparent = missingAPI.headers().traceparent;
+  if (traceparent === undefined) throw new Error('响应缺少 traceparent 头');
+  expect(errorBody.code).toBe('NOT_FOUND');
+  expect(traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
+  expect(errorBody.trace_id).toBe(traceparent.split('-')[1]);
+  expect(missingAPI.headers()).not.toHaveProperty('x-trace-id');
   expect((await request.get('/assets/missing.js')).status()).toBe(404);
   expect(errors).toEqual([]);
 });
@@ -29,7 +35,7 @@ test('connection error is explained and retry reconnects to the real API', async
         code: 'UNAVAILABLE',
         message: '测试服务暂时不可用',
         details: [],
-        request_id: 'test-request',
+        trace_id: '4bf92f3577b34da6a3ce929d0e0e4736',
       }),
     }),
   );

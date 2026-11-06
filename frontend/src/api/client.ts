@@ -3,14 +3,14 @@ import { clientConfig } from '../config';
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  readonly requestId?: string;
+  readonly traceId?: string;
 
-  constructor(message: string, status: number, code: string, requestId?: string) {
+  constructor(message: string, status: number, code: string, traceId?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
-    this.requestId = requestId;
+    this.traceId = traceId;
   }
 }
 
@@ -31,7 +31,7 @@ export async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T>
         typeof body?.message === 'string' ? body.message : `请求失败（HTTP ${response.status}）`,
         response.status,
         typeof body?.code === 'string' ? body.code : 'HTTP_ERROR',
-        typeof body?.request_id === 'string' ? body.request_id : undefined,
+        typeof body?.trace_id === 'string' ? body.trace_id : undefined,
       );
     }
     if (body === null) throw new ApiError('接口未返回有效 JSON', response.status, 'INVALID_JSON');

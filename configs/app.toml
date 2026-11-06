@@ -1,11 +1,11 @@
-# Every application setting is required. Missing fields never receive code or environment defaults.
-# Relative paths are resolved from the project root, not this file's directory.
+# 所有应用配置项均为必填；缺失字段不会使用代码或环境变量中的默认值。
+# 相对路径以项目根目录为基准解析，而非本文件所在目录。
 data_dir = ".data"
 database_filename = "app.sqlite3"
 backup_directory = ".data/backups"
 frontend_dir = "frontend/dist"
 serve_frontend = true
-# Automatic cleaning is only allowed for the scaffold-owned frontend/dist directory.
+# 仅允许自动清理脚手架管理的 frontend/dist 目录。
 frontend_clean_output = true
 sqlite_timeout_seconds = 5.0
 allowed_hosts = ["127.0.0.1", "localhost", "::1"]
@@ -31,12 +31,12 @@ workers = 1
 graceful_shutdown_seconds = 10.0
 keep_alive_seconds = 5
 backlog = 2048
-# Zero explicitly means no concurrency limit.
+# 显式设为 0 表示不限制并发数。
 concurrency_limit = 0
 
 [database]
 journal_mode = "WAL"
-# SQLite durability policy; unrelated to synchronous/asynchronous ORM calls.
+# SQLite 持久性策略，与 ORM 调用采用同步还是异步方式无关。
 synchronous = "FULL"
 pool_size = 5
 max_overflow = 10
@@ -47,14 +47,42 @@ directory = "logs"
 filename = "app.log"
 bootstrap_filename = "service.log"
 level = "INFO"
-format = "{time:YYYY-MM-DD HH:mm:ss.SSS Z} | {level: <8} | {extra[request_id]} | {message}"
+format = "{time:YYYY-MM-DD HH:mm:ss.SSS Z} | {level: <8} | {extra[trace_id]} | {message}"
 rotation = "10 MB"
-# Zero explicitly keeps every rotated file; no TOML null or implicit fallback is used.
+# 显式设为 0 表示保留所有轮转日志文件；不使用 TOML 空值或隐式回退。
 retention_days = 0
 compression = "none"
 serialize = false
 console = false
 request_logging = true
+
+[telemetry]
+# 仅维护请求上下文；下列关闭项由校验器约束，不能通过配置开启采集或导出。
+tracing = true
+metrics = false
+logs = false
+operation_spans = false
+auto_configure = false
+sampler = "always_off"
+id_generator = "random"
+sdk_disabled = false
+internal_metrics_enabled = false
+# provider 由应用 lifespan 关闭，不注册进程退出钩子。
+shutdown_on_exit = false
+context = "contextvars_context"
+propagators = "tracecontext"
+known_methods = ["CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "QUERY", "TRACE"]
+
+[telemetry.span_limits]
+# 显式传入全部 SDK 限制，避免读取 OTEL_* 限制或隐式使用 SDK 默认值。
+max_attributes = 0
+max_events = 0
+max_links = 0
+max_span_attributes = 0
+max_event_attributes = 0
+max_link_attributes = 0
+max_attribute_length = 0
+max_span_attribute_length = 0
 
 [service]
 pid_file = ".run/fullstack-starter.pid"
@@ -71,8 +99,8 @@ proxy_target = "http://127.0.0.1:18001"
 strict_port = true
 change_origin = true
 
-# Only this section and the application title/version are injected into the browser build.
-# Changing these values requires rebuilding the frontend.
+# 仅将本节配置及应用标题、版本注入浏览器构建产物。
+# 修改这些值后需要重新构建前端。
 [client]
 request_timeout_seconds = 10.0
 query_stale_seconds = 30.0
@@ -84,7 +112,7 @@ retry_network_errors = true
 refetch_on_window_focus = false
 refetch_on_mount = true
 refetch_on_reconnect = true
-# Write retries remain disabled until a future project has an idempotency contract.
+# 在后续项目建立幂等性契约之前，保持禁用写操作重试。
 mutation_retry_attempts = 0
 theme_primary_color = "#14675b"
 theme_border_radius = 10
@@ -106,7 +134,7 @@ workers = 1
 retries = 0
 test_timeout_seconds = 30.0
 expect_timeout_seconds = 5.0
-# Zero explicitly disables the per-action timeout.
+# 显式设为 0 表示禁用单次操作超时。
 action_timeout_seconds = 0.0
 navigation_timeout_seconds = 30.0
 trace = "retain-on-failure"

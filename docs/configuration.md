@@ -2,7 +2,7 @@
 
 ## 结论与格式选择
 
-本项目的应用配置入口为 [configs/app.toml](../configs/app.toml)。当前有 **86 个叶子配置项**，所有字段和分组都必须显式提供。缺项、未知项、错误类型或无效数值直接报错，不由代码、环境变量、`.env` 或旧 JSON 文件补齐。
+本项目的应用配置入口为 [configs/app.toml](../configs/app.toml)。当前有 **107 个叶子配置项**，所有字段和分组都必须显式提供。缺项、未知项、错误类型或无效数值直接报错，不由代码、环境变量、`.env` 或旧 JSON 文件补齐。
 
 JSON 是可靠的机器交换格式，适合 API、生成数据和工具元信息。这里的配置主要由人维护，字段增加后需要分组和注释，因此选择 TOML。它不是对所有项目都最优，而是更适合当前 Python 主导、前后端同仓库的小型脚手架。[TOML 规范](https://toml.io/en/)
 
@@ -19,6 +19,8 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 | `server` | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit` | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限 |
 | `database` | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds` | SQLite 日志与持久化模式、连接池容量和等待时间 |
 | `logging` | `directory`, `filename`, `bootstrap_filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging` | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志 |
+| `telemetry` | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods` | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接 |
+| `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length` | 显式传入全部八项 SDK SpanLimits；随附值均为 0 |
 | `service` | `pid_file`, `startup_timeout_seconds`, `shutdown_timeout_seconds`, `inspection_timeout_seconds`, `readiness_poll_seconds`, `shutdown_poll_seconds` | PID 文件、启动/停止等待、进程检查超时与轮询间隔 |
 | `vite` | `host`, `port`, `proxy_target`, `strict_port`, `change_origin` | 开发服务器地址、端口、严格端口策略和代理行为 |
 | `client` | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family` | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题 |
@@ -79,11 +81,32 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 - 源码/测试目录、生成文件名、测试用例数据、进程就绪协议、CLI 交换缓冲上限与秒/毫秒换算。
 - 第三方库尚未在本项目启用的功能，不额外制造配置项。
 
-FastAPI 原生 OpenTelemetry 的 tracing、metrics、logs、operation_spans 和 auto_configure 均在应用工厂中固定关闭，不新增 TOML 遥测字段，也不依赖卸载 SDK 或设置环境变量来维持关闭状态。业务项目确有需求时，再显式设计采集、脱敏、采样和导出设置；现有 Loguru 日志不受该关闭策略影响。[FastAPI 遥测配置](https://fastapi.tiangolo.com/advanced/opentelemetry/)
+原生 telemetry 的采集关闭约束及 SDK 参数边界见下节，属于代码校验的固定能力范围。保留 SDK 并创建上下文不等于开启采集。
 
 SQLite 统一要求 3.51.3+，是针对 [WAL-reset 数据损坏修复](https://sqlite.org/wal.html#walresetbug)的数据完整性基线。官方虽为 3.44.6、3.50.7 提供回补，本脚手架暂不按旧分支或发行版补丁建立例外；DELETE 模式也使用相同基线。检查方式与 Python 升级方向见 README。
 
-错误响应的空详情列表、非请求日志的请求标识占位符和加载/错误文案属于协议或界面语义，不是配置缺失后的兜底参数。
+错误响应的空详情列表、非请求日志的链路标识占位符和加载/错误文案属于协议或界面语义，不是配置缺失后的兜底参数。
+
+## 遥测上下文与环境隔离
+
+本项目只维护请求上下文，使用 FastAPI 原生 telemetry 和锁定的 OTel API/SDK 1.45.1。`telemetry.tracing = true`、`sdk_disabled = false` 保证 SDK 能创建有效上下文；采样器只接受 `always_off`，ID 生成器只接受 `random`，上下文实现只接受 `contextvars_context`，传播器只接受 `tracecontext`。其余六个布尔开关必须为 false：`metrics`、`logs`、`operation_spans`、`auto_configure`、`internal_metrics_enabled`、`shutdown_on_exit`。值违反范围时在配置校验阶段失败，不通过默认值修正。全部字段均必填。
+
+`app` 包首先清除当前进程中继承的全部 `OTEL_*` / `FASTAPI_OTEL_*` 键，不记录其值。这样第三方模块在首次导入时不会消费外部 propagator、context、SDK 默认限制或导出配置。应用工厂在 SDK 导入和 provider 构建前再次清理，再用 TOML 值填充以下固定白名单；对 shell 和其他进程没有影响，请求期间不修改环境。
+
+| SDK/FastAPI 环境入口 | TOML 字段 | 用途 |
+| --- | --- | --- |
+| `OTEL_SDK_DISABLED` | `telemetry.sdk_disabled` | 防止 SDK 被外部值变成 NoOp |
+| `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED` | `telemetry.internal_metrics_enabled` | 禁用 SDK 自身指标 |
+| `OTEL_PYTHON_CONTEXT` | `telemetry.context` | 明确支持的 contextvars 上下文实现 |
+| `OTEL_PROPAGATORS` | `telemetry.propagators` | 明确 W3C tracecontext；同时用公开 API 安装该传播器，覆盖已有模块缓存 |
+| `OTEL_INSTRUMENTATION_HTTP_KNOWN_METHODS` | `telemetry.known_methods` | FastAPI 原生 HTTP 方法归类，列表序列化为逗号分隔值 |
+| `FASTAPI_OTEL_AUTO_CONFIGURE` | `telemetry.auto_configure` | 禁止自动初始化导出组件；FastAPI 参数也显式设为同一配置值 |
+
+采样器、随机 ID 生成器和八项 SpanLimits 通过构造参数传入；Resource 的 `service.name`、`service.version` 分别取 `application.title`、`application.version`。Resource 直接构造，不调用自动探测环境的 `Resource.create()`。不设置全局 tracer/meter/logger provider；使用本地 tracer provider 和 NoOp meter provider，且不注册采集/导出 processor 或 exporter。应用 lifespan 管理 provider 关闭，OpenAPI CLI 在导出后显式关闭。
+
+环境白名单只是第三方参数通道，不能作为第二个配置来源。未使用的 exporter、资源探测器和自动插桩入口保持不配置，外部同名前缀变量被丢弃。该入口管理整个单应用进程；如果宿主在导入 `app` 前已初始化第三方 OTel 实现，其先前副作用无法由应用撤销，运行入口应遵循本项目的 sh/CLI 顺序。
+
+随附日志格式继续使用 `{extra[trace_id]}`，非请求日志使用 `-` 占位；正常响应和错误响应均返回当前服务端上下文的标准 `traceparent` 头，其中 trace ID 与错误体、500 日志一致。不返回 `X-Trace-ID`，也不原样回显上游 parent ID；不增加响应头名称配置开关。请求头缺失或无效时由 SDK 创建上下文，应用层没有 UUID 生成回退。trace ID 不再受 UUIDv7 格式约束，备份文件的 UUIDv7 命名不受影响。
 
 ## 引导入口与迁移
 

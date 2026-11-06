@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from uuid import uuid4
+from uuid import uuid7
 
 import pytest
 import tomli_w
@@ -86,7 +86,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert not (target / "backend/app/service.py").exists()
     assert (target / "frontend/src/types/api.generated.d.ts").is_file()
     assert (target / ".gitignore").is_file()
-    assert "Every application setting is required" in (target / "configs/app.toml").read_text()
+    assert "所有应用配置项均为必填" in (target / "configs/app.toml").read_text()
     assert (
         json.loads((target / "frontend/package.json").read_text())["name"] == "ledger-app-frontend"
     )
@@ -191,7 +191,7 @@ def test_existing_targets_are_never_overwritten(tmp_path: Path, kind: str) -> No
 
 
 def test_target_inside_scaffold_is_rejected(tmp_path: Path) -> None:
-    target = PROJECT_ROOT / f"rejected-creator-{uuid4().hex}"
+    target = PROJECT_ROOT / f"rejected-creator-{uuid7().hex}"
     result = run_creator(
         PROJECT_ROOT / "scripts/create-project.sh",
         tmp_path,

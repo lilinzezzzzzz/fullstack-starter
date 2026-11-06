@@ -10,30 +10,38 @@ from app.errors import register_error_handlers
 from app.frontend import FrontendFiles, check_frontend_directory
 from app.logging_setup import configure_logging
 from app.middleware import RequestMiddleware
+from app.telemetry import new_tracer_provider
 
 
 def create_app(settings: Settings) -> FastAPI:
+    tracer_provider = new_tracer_provider(settings)
+
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        configure_logging(settings.logging)
-        if settings.serve_frontend:
-            check_frontend_directory(settings.frontend_dir)
-        engine = create_database_engine(settings)
         try:
-            await check_database_revision(engine, settings)
-            application.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
-            yield
+            configure_logging(settings.logging)
+            if settings.serve_frontend:
+                check_frontend_directory(settings.frontend_dir)
+            engine = create_database_engine(settings)
+            try:
+                await check_database_revision(engine, settings)
+                application.state.session_factory = async_sessionmaker(
+                    engine, expire_on_commit=False
+                )
+                yield
+            finally:
+                await engine.dispose()
         finally:
-            await engine.dispose()
+            tracer_provider.shutdown()
 
     application = FastAPI(
-        # Telemetry is an explicit project capability; the scaffold does not opt in.
         telemetry={
-            "tracing": False,
-            "metrics": False,
-            "logs": False,
-            "operation_spans": False,
-            "auto_configure": False,
+            "tracer_provider": tracer_provider,
+            "tracing": settings.telemetry.tracing,
+            "metrics": settings.telemetry.metrics,
+            "logs": settings.telemetry.logs,
+            "operation_spans": settings.telemetry.operation_spans,
+            "auto_configure": settings.telemetry.auto_configure,
         },
         title=settings.application.title,
         version=settings.application.version,
@@ -45,6 +53,7 @@ def create_app(settings: Settings) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = settings
+    application.state.tracer_provider = tracer_provider
     application.add_middleware(RequestMiddleware, settings=settings)
     register_error_handlers(application)
     application.include_router(router)
@@ -52,7 +61,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     def openapi_with_client_schema():
         schema = original_openapi()
-        # Public build-time settings share generated types, without publishing server values.
+        # 公开的构建时配置复用生成的类型，不向浏览器暴露服务端配置值。
         schema["components"]["schemas"]["ClientSettings"] = ClientSettings.model_json_schema()
         return schema
 

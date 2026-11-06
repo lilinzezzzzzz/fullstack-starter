@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from app.config import PROJECT_ROOT, load_settings
 from app.logging_setup import configure_logging
 from app.main import create_app
-from tests.helpers import read_config, save_config, write_config
+from tests.helpers import read_config, response_trace_id, save_config, write_config
 
 
 def test_environment_and_dotenv_do_not_override_file(
@@ -63,17 +63,17 @@ def test_missing_config_has_no_environment_fallback(tmp_path: Path) -> None:
 def test_loguru_file_and_uvicorn_bridge_do_not_duplicate(settings) -> None:
     configure_logging(settings.logging)
     configure_logging(settings.logging)
-    logger.bind(request_id="request-probe").info("loguru-probe")
+    logger.bind(trace_id="trace-probe").info("loguru-probe")
     logging.getLogger("uvicorn.error").info("uvicorn-probe")
     contents = (settings.logging.directory / settings.logging.filename).read_text()
     assert contents.count("loguru-probe") == 1
     assert contents.count("uvicorn-probe") == 1
-    assert "request-probe" in contents
+    assert "trace-probe" in contents
 
 
-def test_request_id_is_written_to_loguru_file(settings) -> None:
+def test_trace_id_is_written_to_loguru_file(settings) -> None:
     with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
         response = client.get("/api/v1/hello")
     contents = (settings.logging.directory / settings.logging.filename).read_text()
-    assert response.headers["x-request-id"] in contents
+    assert response_trace_id(response.headers) in contents
     assert "GET /api/v1/hello 200" in contents

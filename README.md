@@ -13,7 +13,7 @@ V1 只有 Hello 欢迎页、Hello API 和 SQLite 健康检查。后端按 `route
 
 ## 技术栈
 
-- Python 3.14.7、uv；FastAPI、Pydantic v2、异步 SQLAlchemy 2.0、aiosqlite、SQLite、Alembic、Loguru。
+- Python 3.14.7、uv；FastAPI、Pydantic v2、异步 SQLAlchemy 2.0、aiosqlite、SQLite、Alembic、Loguru；OpenTelemetry API/SDK 1.45.1。
 - Node.js 24.22.0 LTS、pnpm 9.12.2；React、TypeScript、Vite、React Router、TanStack Query、Ant Design、CSS Modules。
 - Ruff、pytest、ESLint、Prettier、TypeScript、Playwright Chromium。
 
@@ -120,7 +120,7 @@ git status --short --untracked-files=all
 
 ## 配置文件
 
-应用配置为 [configs/app.toml](configs/app.toml)。TOML 支持注释和分组，适合这套人工维护的 Python 项目。Python 原生解析并统一校验全部 86 个叶子配置项，Vite 和测试工具复用校验结果。
+应用配置为 [configs/app.toml](configs/app.toml)。TOML 支持注释和分组，适合这套人工维护的 Python 项目。Python 原生解析并统一校验全部 107 个叶子配置项，Vite 和测试工具复用校验结果。
 
 **所有配置字段必填，没有代码默认值、环境变量、`.env`、隐式合并或旧 JSON 回退。** 缺文件、缺字段、未知项、错误类型和无效数值均明确失败。`0`、`false` 和空列表是显式值，不会被替换成其他值。具体单位与取值见 TOML 注释。
 
@@ -140,7 +140,11 @@ git status --short --untracked-files=all
 
 运行目录不得与源码、配置、文档或 `.git` 重叠；前端仅允许 `frontend/dist` 子树作为 `frontend/` 内的输出位置。路径检查会解析符号链接、折叠大小写，并检查目录包含关系的两个方向；通过符号链接把 `frontend/dist` 指向外部时不允许自动清空。除源码外，遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录也受保护；数据库、应用日志、bootstrap log 和 PID 不得指向同一文件。
 
-FastAPI 原生 OpenTelemetry 在代码中显式关闭；环境变量和已有全局 provider 不会启用该功能。Loguru 应用、请求和 Uvicorn 日志仍按 TOML 工作。需要遥测的业务项目再显式引入配置、依赖和数据处理规则。
+FastAPI 原生 telemetry 维护请求 trace 上下文，使用显式创建的本地 SDK provider。`telemetry` 与 `telemetry.span_limits` 全部字段必填；校验器约束采样、指标、OTel 日志、操作 span、内部指标和自动导出保持关闭，不注册采集/导出 processor 或 exporter。Loguru 继续负责应用、请求和 Uvicorn 日志。依赖锁定 OTel API/SDK 1.45.1，升级时需重新核对环境读取边界。
+
+有效的 `traceparent` 由官方 propagator 解析并继承 trace ID；缺失或无效时，SDK 创建新的 trace/span 上下文。`trace_id` 是 SDK 的 32 位小写十六进制标识，不再要求 UUIDv7；同一链路的多个请求共享 trace ID，各自有不同的 span ID。中间件将当前 trace ID 用于日志和错误体，并通过官方 propagator 将当前服务端上下文注入 `traceparent` 响应头，不返回 `X-Trace-ID`。响应头包含 trace ID、当前服务端 span ID 和 SDK flags，不原样回显上游头；采样位保持关闭。解析边界见 [设计方案](docs/design.md#前端与接口契约)。
+
+`app` 包导入时会清除当前进程继承的 `OTEL_*` / `FASTAPI_OTEL_*` 设置，不访问数据库；应用工厂再将已校验的 TOML 值通过构造参数和受控环境白名单传给 SDK。环境变量是第三方参数通道，配置来源仍只有 TOML，且请求期间不修改环境。白名单见 [配置约定](docs/configuration.md#遥测上下文与环境隔离)。
 
 前端构建需要后端依赖，以便使用同一校验器。仅 `client` 和应用标题/版本注入浏览器；服务端路径和完整配置不会打包。后端改配置后重启，前端参数改动后重新构建。外部工具的 PATH、缓存和测试浏览器位置不作为应用参数来源。
 
@@ -193,7 +197,7 @@ PID 默认保存在 `.run/fullstack-starter.pid`，操作锁自动派生为 `.ru
 - `.pid.lock` 是控制操作的互斥锁文件，停止后可以保留，操作结束时内核锁已释放。
 - `status` 的退出码为 0（运行中）、3（已停止）或 1（检查失败）。
 
-默认日志保存在根目录 `logs/app.log`，由 Loguru 统一记录应用、请求标识和 Uvicorn 日志；`logs/service.log` 捕获导入或启动早期错误。诊断日志不打印局部变量。随附运行目录、常见日志、PID、SQLite 文件及 WAL/SHM 辅助文件均被 Git 忽略；`.env*`、`.secrets*` 也保持忽略。
+默认日志保存在根目录 `logs/app.log`，由 Loguru 统一记录应用、链路标识和 Uvicorn 日志；`logs/service.log` 捕获导入或启动早期错误。诊断日志不打印局部变量。随附运行目录、常见日志、PID、SQLite 文件及 WAL/SHM 辅助文件均被 Git 忽略；`.env*`、`.secrets*` 也保持忽略。
 
 直接修改模板或已有项目的运行路径时，应同步维护 `.gitignore`。生成器只会自动补充新副本的规则。使用 `git check-ignore --no-index <实际产物路径>` 核对，并在提交前检查 `git status --short --untracked-files=all`。
 

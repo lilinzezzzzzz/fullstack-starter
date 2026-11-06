@@ -27,17 +27,20 @@ def error_response(
     details: list[ErrorDetail] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
-    request_id = getattr(request.state, "request_id", "unavailable")
-    body = ErrorResponse(code=code, message=message, details=details or [], request_id=request_id)
+    trace_id = getattr(request.state, "trace_id", "unavailable")
+    traceparent = getattr(request.state, "traceparent", None)
+    body = ErrorResponse(code=code, message=message, details=details or [], trace_id=trace_id)
+    response_headers = {
+        **(headers if headers is not None else {}),
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if traceparent is not None:
+        response_headers["traceparent"] = traceparent
     return JSONResponse(
         status_code=status_code,
         content=body.model_dump(),
-        headers={
-            **(headers if headers is not None else {}),
-            "X-Request-ID": request_id,
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
+        headers=response_headers,
     )
 
 
@@ -58,7 +61,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-        # Return field messages only, never the rejected body or arbitrary exception context.
+        # 仅返回字段错误信息，不返回被拒绝的请求体或任意异常上下文。
         details = [
             ErrorDetail(field=".".join(str(part) for part in item["loc"]), message=item["msg"])
             for item in exc.errors()
@@ -74,9 +77,9 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-        request_id = getattr(request.state, "request_id", "unavailable")
-        # The Exception handler runs outside RequestMiddleware when an error reaches
-        # ServerErrorMiddleware, so restore the request context just for this log.
-        with logger.contextualize(request_id=request_id):
+        trace_id = getattr(request.state, "trace_id", "unavailable")
+        # 异常到达 ServerErrorMiddleware 时，Exception 处理器在 RequestMiddleware 外运行，
+        # 因此仅为本条日志恢复请求上下文。
+        with logger.contextualize(trace_id=trace_id):
             logger.opt(exception=exc).error("Unhandled request error")
         return error_response(request, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试", 500)

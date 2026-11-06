@@ -7,7 +7,7 @@ from app.config import LoggingSettings
 
 
 class InterceptHandler(logging.Handler):
-    """Forward Uvicorn's standard logging to the same Loguru sinks."""
+    """将 Uvicorn 的标准日志转发到相同的 Loguru 输出目标。"""
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -20,7 +20,7 @@ class InterceptHandler(logging.Handler):
 def configure_logging(settings: LoggingSettings) -> None:
     settings.directory.mkdir(parents=True, exist_ok=True)
     logger.remove()
-    logger.configure(extra={"request_id": "-"})
+    logger.configure(extra={"trace_id": "-"})
     options = {
         "level": settings.level,
         "format": settings.format,

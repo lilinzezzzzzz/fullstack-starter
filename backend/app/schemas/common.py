@@ -10,7 +10,7 @@ class ErrorResponse(BaseModel):
     code: str
     message: str
     details: list[ErrorDetail] = Field(default_factory=list)
-    request_id: str
+    trace_id: str
 
 
 class HealthResponse(BaseModel):

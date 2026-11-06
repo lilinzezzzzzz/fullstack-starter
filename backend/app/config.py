@@ -80,6 +80,51 @@ class LoggingSettings(ConfigSection):
         return None if self.retention_days == 0 else timedelta(days=self.retention_days)
 
 
+class SpanLimitSettings(ConfigSection):
+    max_attributes: int = Field(ge=0)
+    max_events: int = Field(ge=0)
+    max_links: int = Field(ge=0)
+    max_span_attributes: int = Field(ge=0)
+    max_event_attributes: int = Field(ge=0)
+    max_link_attributes: int = Field(ge=0)
+    max_attribute_length: int = Field(ge=0)
+    max_span_attribute_length: int = Field(ge=0)
+
+
+class TelemetrySettings(ConfigSection):
+    tracing: bool
+    metrics: bool
+    logs: bool
+    operation_spans: bool
+    auto_configure: bool
+    sampler: Literal["always_off"]
+    id_generator: Literal["random"]
+    sdk_disabled: bool
+    internal_metrics_enabled: bool
+    shutdown_on_exit: bool
+    context: Literal["contextvars_context"]
+    propagators: Literal["tracecontext"]
+    known_methods: list[Annotated[str, Field(pattern=r"^[A-Z]+$")]] = Field(min_length=1)
+    span_limits: SpanLimitSettings
+
+    @model_validator(mode="after")
+    def require_context_only(self) -> Self:
+        if not self.tracing or self.sdk_disabled:
+            raise ValueError("Native trace context requires tracing=true and sdk_disabled=false")
+        if any(
+            (
+                self.metrics,
+                self.logs,
+                self.operation_spans,
+                self.auto_configure,
+                self.internal_metrics_enabled,
+                self.shutdown_on_exit,
+            )
+        ):
+            raise ValueError("Telemetry collection, automatic export and exit hooks must stay off")
+        return self
+
+
 class ServiceSettings(ConfigSection):
     pid_file: ProjectPath
     startup_timeout_seconds: float = Field(gt=0)
@@ -152,6 +197,7 @@ class Settings(ConfigSection):
     server: ServerSettings
     database: DatabaseSettings
     logging: LoggingSettings
+    telemetry: TelemetrySettings
     service: ServiceSettings
     vite: ViteSettings
     client: ClientSettings
@@ -184,7 +230,7 @@ class Settings(ConfigSection):
 
 
 def load_settings(config_file: str | Path) -> Settings:
-    """Read one complete TOML file. No environment, merging, or value fallback."""
+    """读取单个完整的 TOML 文件，不读取环境变量、不合并配置、不回退取值。"""
     path = resolve_project_path(config_file)
     if path.suffix != ".toml":
         raise ValueError("Application configuration must be a .toml file")
