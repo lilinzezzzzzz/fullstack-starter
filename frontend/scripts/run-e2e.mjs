@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
@@ -23,7 +22,6 @@ const parent = settings.testing.temporary_directory;
 await mkdir(parent, { recursive: true });
 const workDir = await mkdtemp(join(parent, 'agent-task.'));
 const configFile = join(workDir, 'app.toml');
-const pidFile = join(workDir, 'service.pid');
 const children = new Set();
 let interrupted = false;
 let passed = false;
@@ -44,8 +42,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-async function run(command, argv, { allowInterrupted = false, ...options } = {}) {
-  if (interrupted && !allowInterrupted) throw new Error('Interrupted');
+async function run(command, argv, options = {}) {
+  if (interrupted) throw new Error('Interrupted');
   const child = spawn(command, argv, {
     cwd: projectRoot,
     stdio: 'inherit',
@@ -124,7 +122,6 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
   settings.server.host = settings.testing.host;
   settings.logging.directory = join(workDir, 'logs');
   settings.logging.console = false;
-  settings.service.pid_file = pidFile;
   settings.allowed_origins = [baseURL];
   settings.allowed_hosts = [settings.testing.host];
   await writeFile(configFile, stringify(settings));
@@ -139,8 +136,6 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
     configFile,
     'db-upgrade',
   ]);
-  await run('sh', ['scripts/service.sh', 'start', '--config', configFile]);
-
   const runtimeFile = join(workDir, 'playwright.json');
   await writeFile(
     runtimeFile,
@@ -152,6 +147,7 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
   );
   const generatedConfig = join(workDir, 'playwright.config.mjs');
   const testFactory = pathToFileURL(join(frontendRoot, 'scripts/playwright-settings.mjs')).href;
+  const serviceCommand = `sh entrypoints/service.sh --config '${configFile.replaceAll("'", "'\\''")}'`;
   await writeFile(
     generatedConfig,
     `
@@ -164,6 +160,17 @@ export default {
   testDir: ${JSON.stringify(join(frontendRoot, 'e2e'))},
   outputDir: runtime.outputDir,
   use: { ...config.use, baseURL: runtime.baseURL },
+  webServer: {
+    command: ${JSON.stringify(serviceCommand)},
+    cwd: ${JSON.stringify(projectRoot)},
+    url: runtime.baseURL + '/api/health',
+    reuseExistingServer: false,
+    timeout: runtime.testing.command_timeout_seconds * 1000,
+    gracefulShutdown: {
+      signal: 'SIGTERM',
+      timeout: runtime.testing.termination_grace_seconds * 1000,
+    },
+  },
 };
 `,
   );
@@ -175,21 +182,12 @@ export default {
   passed = true;
 } catch (error) {
   console.error(error.message);
-  console.error(await readFile(join(workDir, 'logs/service.log'), 'utf8').catch(() => ''));
+  console.error(
+    await readFile(join(workDir, 'logs', settings.logging.filename), 'utf8').catch(() => ''),
+  );
   console.error('Diagnostics retained:', workDir);
   process.exitCode = interrupted ? 130 : 1;
 } finally {
-  if (existsSync(pidFile)) {
-    try {
-      await run('sh', ['scripts/service.sh', 'stop', '--config', configFile], {
-        allowInterrupted: true,
-      });
-    } catch (error) {
-      passed = false;
-      process.exitCode = 1;
-      console.error('Could not stop test service:', error.message, workDir);
-    }
-  }
   const owned = [...children];
   const exits = owned.map((child) => once(child, 'exit').catch(() => {}));
   for (const child of owned) stop(child);

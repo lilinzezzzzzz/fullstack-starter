@@ -155,7 +155,8 @@ def test_public_output_cannot_contain_private_storage(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "destination", ["backend/app", "scripts", "docs", ".git", "frontend/public", ".", "README.md"]
+    "destination",
+    ["backend/app", "entrypoints", "scripts", "docs", ".git", "frontend/public", ".", "README.md"],
 )
 def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -> None:
     path = write_config(tmp_path, frontend_dir=destination)
@@ -169,7 +170,6 @@ def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -
         "data_dir",
         "backup_directory",
         "logging.directory",
-        "service.pid_file",
         "testing.temporary_directory",
     ],
 )
@@ -229,15 +229,15 @@ def test_clean_output_rejects_symlinked_default_tree(tmp_path: Path) -> None:
             data_dir=project / "data",
             backup_directory=project / "backups",
             logging_directory=project / "logs",
-            pid_file=project / ".run/service.pid",
             temporary_directory=tmp_path / "tmp",
             database_filename="app.sqlite3",
             logging_filename="app.log",
-            bootstrap_filename="service.log",
         )
 
 
-@pytest.mark.parametrize("destination", ["Backend/app", "SCRIPTS", "DOCS", ".GIT", "LOGS", ".DATA"])
+@pytest.mark.parametrize(
+    "destination", ["Backend/app", "ENTRYPOINTS", "SCRIPTS", "DOCS", ".GIT", "LOGS", ".DATA"]
+)
 def test_case_only_source_and_runtime_aliases_are_rejected(
     tmp_path: Path, destination: str
 ) -> None:
@@ -260,7 +260,6 @@ def test_legacy_and_dependency_directories_cannot_be_public_output(
     [
         "data_dir",
         "logging.directory",
-        "service.pid_file",
         "testing.temporary_directory",
     ],
 )
@@ -282,7 +281,8 @@ def test_case_only_source_aliases_are_rejected_for_runtime_paths(
 def test_runtime_file_paths_must_not_collide(tmp_path: Path) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
-    data["service"]["pid_file"] = str(Path(data["data_dir"]) / data["database_filename"])
+    data["logging"]["directory"] = data["data_dir"]
+    data["logging"]["filename"] = data["database_filename"] + ".lock"
     save_config(path, data)
     with pytest.raises(ValidationError, match="same file path"):
         load_settings(path)

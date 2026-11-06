@@ -188,11 +188,6 @@ def validate_template_shape(settings: dict) -> None:
         expected = bool if field in {"serve_frontend", "frontend_clean_output"} else str
         require(isinstance(settings.get(field), expected), f"Template {field} has an invalid type")
     require(
-        isinstance(settings.get("service"), dict)
-        and isinstance(settings["service"].get("pid_file"), str),
-        "Template service.pid_file must be a string",
-    )
-    require(
         valid_filename(settings.get("database_filename")),
         "Template database_filename must be a filename without directories",
     )
@@ -200,8 +195,7 @@ def validate_template_shape(settings: dict) -> None:
     require(
         isinstance(logging_settings, dict)
         and isinstance(logging_settings.get("directory"), str)
-        and valid_filename(logging_settings.get("filename"))
-        and valid_filename(logging_settings.get("bootstrap_filename")),
+        and valid_filename(logging_settings.get("filename")),
         "Template logging directory must be a string and log filenames must be filenames",
     )
     testing = settings.get("testing")
@@ -219,11 +213,9 @@ def validate_template_paths(settings: dict) -> None:
         data_dir=settings["data_dir"],
         backup_directory=settings["backup_directory"],
         logging_directory=settings["logging"]["directory"],
-        pid_file=settings["service"]["pid_file"],
         temporary_directory=settings["testing"]["temporary_directory"],
         database_filename=settings["database_filename"],
         logging_filename=settings["logging"]["filename"],
-        bootstrap_filename=settings["logging"]["bootstrap_filename"],
     )
 
 
@@ -256,6 +248,7 @@ SOURCE_TREE_ROOTS = (
     "backend/tests",
     "configs",
     "docs",
+    "entrypoints",
     "scripts",
     "frontend/src",
     "frontend/scripts",
@@ -317,9 +310,8 @@ def copy_source(target: Path, excluded: list[Path]) -> None:
             raise ValueError(f"Copied symlink points outside the new project: {path}")
 
 
-def ignore_runtime_paths(target: Path, directories: list[Path], pid: Path) -> None:
+def ignore_runtime_paths(target: Path, directories: list[Path]) -> None:
     paths = [(path, "/") for path in directories]
-    paths.extend(((pid, ""), (pid.with_suffix(pid.suffix + ".lock"), "")))
     patterns = []
     for path, suffix in paths:
         if "\n" in str(path) or "\r" in str(path):
@@ -386,22 +378,17 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         ("logging", "directory"): relative_runtime_path(
             settings["logging"]["directory"], "logging.directory"
         ),
-        ("service", "pid_file"): relative_runtime_path(
-            settings["service"]["pid_file"], "service.pid_file"
-        ),
     }
     testing_directory = (PROJECT_ROOT / settings["testing"]["temporary_directory"]).resolve()
     if PATH_POLICY.path_is_relative_to(testing_directory, PROJECT_ROOT):
         paths[("testing", "temporary_directory")] = relative_runtime_path(
             settings["testing"]["temporary_directory"], "testing.temporary_directory"
         )
-    pid = paths[("service", "pid_file")]
     changes = {field: path.as_posix() for field, path in paths.items()}
     changes.update(
         {
             ("application", "title"): name,
             ("server", "port"): port,
-            ("service", "pid_file"): (pid.parent / f"{name}.pid").as_posix(),
             ("vite", "port"): vite_port,
             ("vite", "proxy_target"): with_port(settings["vite"]["proxy_target"], port),
         }
@@ -418,14 +405,10 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
     target.parent.mkdir(parents=True, exist_ok=True)
     target.mkdir()
     try:
-        copy_source(target, [*paths.values(), pid.with_suffix(pid.suffix + ".lock")])
+        copy_source(target, list(paths.values()))
         check_project_files(target)
         (target / "configs/app.toml").write_text(config, encoding="utf-8")
-        ignore_runtime_paths(
-            target,
-            [path for field, path in paths.items() if field != ("service", "pid_file")],
-            Path(changes[("service", "pid_file")]),
-        )
+        ignore_runtime_paths(target, list(paths.values()))
         metadata = target / "backend/pyproject.toml"
         old_name = read_toml(metadata)["project"]["name"]
         metadata.write_text(
@@ -496,7 +479,7 @@ def main() -> None:
     print("  pnpm --dir frontend build")
     print("  uv run --directory backend python -m app.cli db-check")
     print("  uv run --directory backend python -m app.cli db-upgrade")
-    print("  sh scripts/service.sh start")
+    print("  sh entrypoints/service.sh")
 
 
 if __name__ == "__main__":

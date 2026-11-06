@@ -48,7 +48,6 @@ def write_config(directory: Path, **overrides: object) -> Path:
         sqlite_timeout_seconds=0.05,
     )
     data["logging"]["directory"] = str(directory / "logs")
-    data["service"]["pid_file"] = str(directory / "service.pid")
     data.update(overrides)
     path = directory / "settings.toml"
     save_config(path, data)

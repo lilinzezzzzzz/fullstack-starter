@@ -10,6 +10,7 @@ from pathlib import Path
 SOURCE_DIRECTORIES = (
     "backend",
     "frontend",
+    "entrypoints",
     "scripts",
     "configs",
     "docs",
@@ -73,11 +74,9 @@ def validate_runtime_paths(
     data_dir: str | Path,
     backup_directory: str | Path,
     logging_directory: str | Path,
-    pid_file: str | Path,
     temporary_directory: str | Path,
     database_filename: str,
     logging_filename: str,
-    bootstrap_filename: str,
 ) -> None:
     project_root = project_root.resolve()
     public = (project_root / frontend_dir).resolve()
@@ -94,7 +93,6 @@ def validate_runtime_paths(
         "data_dir": (project_root / data_dir).resolve(),
         "backup_directory": (project_root / backup_directory).resolve(),
         "logging.directory": (project_root / logging_directory).resolve(),
-        "service.pid_file": (project_root / pid_file).resolve(),
     }
     source_paths = [project_root / name for name in (*SOURCE_DIRECTORIES, *SOURCE_FILES)]
     protected_paths = [
@@ -116,35 +114,15 @@ def validate_runtime_paths(
     for field, path in private_paths.items():
         if paths_overlap(public, path):
             raise ValueError("Frontend output must not overlap private data or runtime paths")
-        if field in {
-            "data_dir",
-            "backup_directory",
-            "logging.directory",
-            "service.pid_file",
-        }:
-            for dependency in DEPENDENCY_DIRECTORIES:
-                if paths_overlap(path, project_root / dependency):
-                    raise ValueError(
-                        f"{field} overlaps protected dependency directory: {dependency}"
-                    )
+        for dependency in DEPENDENCY_DIRECTORIES:
+            if paths_overlap(path, project_root / dependency):
+                raise ValueError(f"{field} overlaps protected dependency directory: {dependency}")
 
-    pid_path = Path(private_paths["service.pid_file"])
-    if any(
-        paths_equal(pid_path, directory)
-        for directory in (
-            project_root,
-            private_paths["data_dir"],
-            private_paths["backup_directory"],
-            private_paths["logging.directory"],
-        )
-    ):
-        raise ValueError("service.pid_file must not point at a configured directory")
-
+    database_path = Path(private_paths["data_dir"]) / database_filename
     file_paths = {
-        "database": Path(private_paths["data_dir"]) / database_filename,
+        "database": database_path,
+        "database lock": database_path.with_suffix(database_path.suffix + ".lock"),
         "application log": Path(private_paths["logging.directory"]) / logging_filename,
-        "bootstrap log": Path(private_paths["logging.directory"]) / bootstrap_filename,
-        "service PID": pid_path,
     }
     items = list(file_paths.items())
     for index, (first_name, first_path) in enumerate(items):
@@ -153,8 +131,6 @@ def validate_runtime_paths(
                 raise ValueError(f"{first_name} and {second_name} must not use the same file path")
 
     temporary = (project_root / temporary_directory).resolve()
-    if paths_equal(pid_path, temporary):
-        raise ValueError("service.pid_file must not point at the testing directory")
     # 此处是 mkdtemp 的父目录，不由运行器管理或删除。
     # /tmp 等外部父目录中可能包含已生成的项目。
     if paths_equal(temporary, project_root) or any(

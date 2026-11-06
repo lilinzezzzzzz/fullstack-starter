@@ -30,12 +30,10 @@ def test_all_paths_are_root_relative_and_database_filename_is_configurable(tmp_p
     config = write_config(tmp_path, data_dir=".data/custom", database_filename="custom.db")
     raw = read_config(config)
     raw["logging"]["directory"] = "logs/custom"
-    raw["service"]["pid_file"] = "custom.pid"
     save_config(config, raw)
     settings = load_settings(config)
     assert settings.database_path == PROJECT_ROOT / ".data/custom/custom.db"
     assert settings.logging.directory == PROJECT_ROOT / "logs/custom"
-    assert settings.service.pid_file == PROJECT_ROOT / "custom.pid"
 
 
 @pytest.mark.parametrize("change", ["unknown", "workers", "filename", "missing"])

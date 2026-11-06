@@ -60,9 +60,9 @@ sh scripts/create-project.sh \
 ### 2. 自动完成的调整
 
 - 复制源码、迁移、规则、文档、生成类型和两份锁文件；依据 `.gitignore` 排除数据、备份、日志、PID、依赖、缓存、构建产物和本地配置，并排除 `.git`、`.env*` 与 `.secrets*`。
-- 额外排除 TOML 指定的实际运行路径，并将新项目的运行路径补入副本 `.gitignore`，支持模板内的自定义目录。数据、备份、日志、PID 和前端输出路径必须在模板目录内；内部绝对路径会改为相对路径，避免指向原项目。模板外的这些路径会明确报错，需先调整模板配置。
+- 额外排除 TOML 指定的实际运行路径，并将新项目的运行路径补入副本 `.gitignore`，支持模板内的自定义目录。数据、备份、日志和前端输出路径必须在模板目录内；内部绝对路径会改为相对路径，避免指向原项目。模板外的这些路径会明确报错，需先调整模板配置。
 - 复制前复用应用的源码路径保护规则，并校验创建所需的关键字段；复制后按源文件树检查 API、路由、服务、迁移、sh 脚本、前端入口和项目元信息；缺少文件时创建失败，不报告成功。
-- 将后端项目名改为 `my-app-backend`，前端包名改为 `my-app-frontend`，应用标题改为 `my-app`，PID 文件改为原 PID 目录下的 `my-app.pid`。
+- 将后端项目名改为 `my-app-backend`，前端包名改为 `my-app-frontend`，应用标题改为 `my-app`。
 - 同步后端端口、Vite 端口、代理目标和允许来源。其余应用配置完整继承模板，保留 TOML 注释，不读取环境变量或补齐缺失配置。
 - 只更新 `uv.lock` 中本地虚拟项目的名称，并用 `uv lock --check --offline` 校验；第三方依赖版本、哈希和前端锁文件保持不变，创建时无需重新解析依赖源。
 - 更新新项目 README、设计文档中的项目名称和端口，为继承的验证记录注明来源。示例测试按应用标题和 Vite 配置断言，重命名后可直接运行。
@@ -89,19 +89,14 @@ pnpm --dir frontend api:types:check
 pnpm --dir frontend build
 uv run --directory backend python -m app.cli db-check
 uv run --directory backend python -m app.cli db-upgrade
-sh scripts/service.sh start
-sh scripts/service.sh status
+sh entrypoints/service.sh
 ```
 
 `build` 包含 TypeScript 检查。完整静态检查与 Chromium 页面流程见下方“接口类型与验证”；后端测试使用临时数据库，不依赖新项目的日常库。
 
 访问 [新项目欢迎页](http://127.0.0.1:18002/)，确认连接成功；[Hello API](http://127.0.0.1:18002/api/v1/hello) 应返回 `{"message": "Hello World"}`，[健康检查](http://127.0.0.1:18002/api/health) 应显示数据库正常。运行路径以新项目自己的 TOML 为准。
 
-查看完成后停止服务，正常停止会清理 `.run/my-app.pid`，`.run/my-app.pid.lock` 可以保留：
-
-```bash
-sh scripts/service.sh stop
-```
+查看完成后，在运行服务的终端按 Ctrl+C 停止。
 
 需要 Vite 热更新时，按下方“可选 Vite 开发”设置 `serve_frontend = false`，本例访问 `http://127.0.0.1:5174/`。其他章节仍以脚手架随附设置为例，实际端口以新项目 TOML 为准。
 
@@ -120,7 +115,7 @@ git status --short --untracked-files=all
 
 ## 配置文件
 
-应用配置为 [configs/app.toml](configs/app.toml)。TOML 支持注释和分组，适合这套人工维护的 Python 项目。Python 原生解析并统一校验全部 107 个叶子配置项，Vite 和测试工具复用校验结果。
+应用配置为 [configs/app.toml](configs/app.toml)。TOML 支持注释和分组，适合这套人工维护的 Python 项目。Python 原生解析并统一校验全部 100 个叶子配置项，Vite 和测试工具复用校验结果。
 
 **所有配置字段必填，没有代码默认值、环境变量、`.env`、隐式合并或旧 JSON 回退。** 缺文件、缺字段、未知项、错误类型和无效数值均明确失败。`0`、`false` 和空列表是显式值，不会被替换成其他值。具体单位与取值见 TOML 注释。
 
@@ -131,14 +126,13 @@ git status --short --untracked-files=all
 | `server` | 地址、端口、单 worker、Keep-Alive、backlog、并发上限和关闭预算 |
 | `database` | SQLite 日志模式、持久化级别和连接池参数 |
 | `logging` | 文件、格式、等级、轮转、保留、压缩、序列化和请求日志 |
-| `service` | PID 文件、启停/检查超时和轮询间隔 |
 | `vite` | 开发地址、端口、代理和严格端口策略 |
 | `client` | 请求超时、缓存、重试、刷新策略和组件主题 |
 | `testing` | 临时目录、进程预算、浏览器、视口、重试和超时 |
 
-相对路径一律以项目根目录为基准，也支持绝对路径。配置文件选址是固定引导约定，和字段默认值不同；另选文件可传 `--config`。接口路径、PID 身份检查、事务完整性等固定契约保留在代码中，详见配置审查文档。
+相对路径一律以项目根目录为基准，也支持绝对路径。配置文件选址是固定引导约定，和字段默认值不同；另选文件可传 `--config`。接口路径、服务与迁移互斥、事务完整性等固定契约保留在代码中，详见配置审查文档。
 
-运行目录不得与源码、配置、文档或 `.git` 重叠；前端仅允许 `frontend/dist` 子树作为 `frontend/` 内的输出位置。路径检查会解析符号链接、折叠大小写，并检查目录包含关系的两个方向；通过符号链接把 `frontend/dist` 指向外部时不允许自动清空。除源码外，遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录也受保护；数据库、应用日志、bootstrap log 和 PID 不得指向同一文件。
+运行目录不得与源码、配置、文档或 `.git` 重叠；前端仅允许 `frontend/dist` 子树作为 `frontend/` 内的输出位置。路径检查会解析符号链接、折叠大小写，并检查目录包含关系的两个方向；通过符号链接把 `frontend/dist` 指向外部时不允许自动清空。除源码外，遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录也受保护；数据库、数据库锁和应用日志不得指向同一文件。
 
 FastAPI 原生 telemetry 维护请求 trace 上下文，使用显式创建的本地 SDK provider。`telemetry` 与 `telemetry.span_limits` 全部字段必填；校验器约束采样、指标、OTel 日志、操作 span、内部指标和自动导出保持关闭，不注册采集/导出 processor 或 exporter。Loguru 继续负责应用、请求和 Uvicorn 日志。依赖锁定 OTel API/SDK 1.45.1，升级时需重新核对环境读取边界。
 
@@ -148,9 +142,9 @@ FastAPI 原生 telemetry 维护请求 trace 上下文，使用显式创建的本
 
 前端构建需要后端依赖，以便使用同一校验器。仅 `client` 和应用标题/版本注入浏览器；服务端路径和完整配置不会打包。后端改配置后重启，前端参数改动后重新构建。外部工具的 PATH、缓存和测试浏览器位置不作为应用参数来源。
 
-随文件提供的运行设置为 18001 端口、根目录 `.data/app.sqlite3`、`logs/app.log` 和 `.run/fullstack-starter.pid`。保留日志设置为 `retention_days = 0`，表示不自动删除历史日志，不是缺项时的默认策略。
+随文件提供的运行设置为 18001 端口、根目录 `.data/app.sqlite3` 和 `logs/app.log`。保留日志设置为 `retention_days = 0`，表示不自动删除历史日志，不是缺项时的默认策略。
 
-修改 PID 路径前先停服务。启停使用启动时同一个配置文件路径。
+修改数据库路径或运行迁移前先停止服务。服务与维护命令使用同一个配置文件。
 
 ## 首次运行
 
@@ -162,7 +156,7 @@ pnpm --dir frontend install --frozen-lockfile
 uv run --directory backend python -m app.cli db-check
 uv run --directory backend python -m app.cli db-upgrade
 pnpm --dir frontend build
-sh scripts/service.sh start
+sh entrypoints/service.sh
 ```
 
 打开 [http://127.0.0.1:18001/](http://127.0.0.1:18001/)。后端检查数据库版本及前端产物，启动时不自动迁移、安装依赖或构建。
@@ -176,47 +170,41 @@ sh scripts/service.sh start
 
 ## 服务控制
 
+服务启动入口为 [entrypoints/service.sh](entrypoints/service.sh)，项目生成等工程工具保留在 `scripts/`。
+
+从项目根目录启动前台服务：
+
 ```bash
-sh scripts/service.sh start
-sh scripts/service.sh status
-sh scripts/service.sh restart
-sh scripts/service.sh stop
+sh entrypoints/service.sh
 ```
 
-脚本只管理后端服务，内部用 Python 标准库处理 TOML、进程与信号，不依赖 jq、PM2 或 systemd。脚本从其他目录调用时也能定位项目。
+终端保持运行，按 Ctrl+C 停止；重新执行同一命令即可再次启动。入口只接受 `--config FILE`，不提供后台 `start / stop / restart / status` 子命令，也不创建 PID 文件。脚本从其他目录调用时也能定位项目。
 
-服务控制实现在 [backend/tools/service_control.py](backend/tools/service_control.py)，sh 入口在后端环境中以 `python -m tools.service_control` 调用它。工具复用 `app` 的配置、日志和应用工厂，`app` 不反向导入工具代码。项目创建器放在根目录 `scripts/`，后端进程工具放在 `backend/tools/`。
+sh 入口在后端环境中执行 `python -m tools.service_control`。[backend/tools/service_control.py](backend/tools/service_control.py) 只读取 TOML、配置 Loguru、创建应用并调用 `uvicorn.run()`，信号处理和优雅关闭由 Uvicorn 负责。依赖安装、数据库迁移和前端构建仍需提前完成。
 
-PID 默认保存在 `.run/fullstack-starter.pid`，操作锁自动派生为 `.run/fullstack-starter.pid.lock`，无需额外配置。启停或维护操作会创建父目录，`.run/` 整体被 Git 忽略，生成项目不复制其中的运行状态。更改 PID 路径前，先用旧配置停止服务并确认没有启停或迁移操作在进行，再切换配置和处理旧锁文件。
+运行中的应用与 `db-upgrade` 使用数据库旁的同一个文件锁，例如 `.data/app.sqlite3.lock`。锁由内核在退出时释放，锁文件可以保留；运行期间不要删除锁文件。重复启动相同数据库的服务会明确失败，端口被其他程序占用时也只报错，不发送信号。
 
-- 真正监听成功后才记录实际服务 PID；重复启动返回当前 PID。
-- 发送 SIGTERM 前核对 PID 对应的模块和配置路径，不按端口批量杀进程。
-- 正常停止后删除 PID 文件；已停止时再次停止也能成功。
-- 陈旧的已退出 PID 会在启动或停止时清理；指向其他程序的 PID 和非法文件不会被覆盖或用于发信号。
-- 停止超时保留 PID，不自动发送 SIGKILL。
-- `.pid.lock` 是控制操作的互斥锁文件，停止后可以保留，操作结束时内核锁已释放。
-- `status` 的退出码为 0（运行中）、3（已停止）或 1（检查失败）。
-
-默认日志保存在根目录 `logs/app.log`，由 Loguru 统一记录应用、链路标识和 Uvicorn 日志；`logs/service.log` 捕获导入或启动早期错误。诊断日志不打印局部变量。随附运行目录、常见日志、PID、SQLite 文件及 WAL/SHM 辅助文件均被 Git 忽略；`.env*`、`.secrets*` 也保持忽略。
+默认日志写入根目录 `logs/app.log`；`logging.console = true` 时同时输出到终端。配置或导入阶段的错误直接显示在终端，不再使用独立的 `service.log`。诊断日志不打印局部变量。
 
 直接修改模板或已有项目的运行路径时，应同步维护 `.gitignore`。生成器只会自动补充新副本的规则。使用 `git check-ignore --no-index <实际产物路径>` 核对，并在提交前检查 `git status --short --untracked-files=all`。
 
-后端维护和服务命令支持显式选择其他完整配置文件：
+服务和维护命令均支持显式选择其他完整配置文件；执行维护前，先在运行服务的终端按 Ctrl+C 停止：
 
 ```bash
-sh scripts/service.sh start --config configs/app.local.toml
-sh scripts/service.sh stop --config configs/app.local.toml
 uv run --directory backend python -m app.cli --config configs/app.local.toml db-upgrade
+sh entrypoints/service.sh --config configs/app.local.toml
 ```
 
-`configs/*.local.toml` 被 Git 忽略；旧的私有 JSON 仍保持忽略但不会读取。Vite 常规构建与开发使用主 TOML；测试会生成完整的临时 TOML。
+`configs/*.local.toml` 被 Git 忽略；旧的私有 JSON 仍保持忽略但不会读取。Vite 常规构建与开发使用主 TOML；测试会生成完整的临时 TOML。旧版完整 TOML 的字段调整见 [配置约定](docs/configuration.md)。
 
 ## 可选 Vite 开发
 
-在 `configs/app.toml` 中将 `serve_frontend` 改为 `false`，再执行：
+先按 Ctrl+C 停止服务，在 `configs/app.toml` 中将 `serve_frontend` 改为 `false`，再分别在两个终端执行：
 
 ```bash
-sh scripts/service.sh restart
+# 终端一
+sh entrypoints/service.sh
+# 终端二
 pnpm --dir frontend dev
 ```
 
@@ -228,17 +216,17 @@ pnpm --dir frontend dev
 
 随附配置的数据库位于项目根目录的 `.data/app.sqlite3`，备份目录为 `.data/backups/`；连接开启 WAL、外键、保守持久化设置和有限锁等待。初始迁移只有 `alembic_version`，没有业务表。`.data/` 是运行数据目录，保持 Git 忽略。
 
-需要升级前快照时，在修改迁移历史或切换到含新迁移的代码之前，用与当前库版本匹配的代码停服并执行备份；新建空库跳过备份。迁移审查与验证完成后，再显式升级并启动。`db-upgrade` 与启停共用互斥锁，有 PID 文件时拒绝迁移；陈旧或异常 PID 也不会被迁移命令删除，应通过同配置的 `service.sh stop` 核查处理。该保护针对脚本管理的服务，直接启动的 Uvicorn 或其他使用同一数据库的程序也必须先停止。
+需要升级前快照时，在修改迁移历史或切换到含新迁移的代码之前，用与当前库版本匹配的代码停服并执行备份；新建空库跳过备份。迁移审查与验证完成后，再显式升级并启动。`db-upgrade` 与应用 lifespan 持有同一个数据库锁，服务运行时会拒绝迁移。执行维护前，在服务终端按 Ctrl+C 停止，并确认其他数据库使用者也已停止；文件锁仅约束使用同一锁机制的本机进程。
 
 ```bash
 # 已有库按需备份：在新增 revision 或切换代码之前执行；新建空库跳过
-sh scripts/service.sh stop
+# 在服务终端按 Ctrl+C 停止
 uv run --directory backend python -m app.cli db-backup
 
 # 完成迁移生成、审查与验证后，确认所有数据库使用者均已停止
-sh scripts/service.sh stop
+# 在服务终端按 Ctrl+C 停止
 uv run --directory backend python -m app.cli db-upgrade
-sh scripts/service.sh start
+sh entrypoints/service.sh
 ```
 
 维护命令与服务必须使用同一个配置文件。备份通过 SQLite Backup API 创建一致性快照，校验完整性与版本后打印路径，保存到 `backup_directory` 指定的位置，不覆盖旧文件。`db-backup` 要求库版本与所用代码一致；生成新 revision 后，不能用新代码备份仍停留在旧 revision 的库，应使用此前与库版本匹配的代码创建快照。
@@ -258,7 +246,7 @@ sh scripts/service.sh start
 | `db-check` | 在独占临时库执行 `base → head`，再检查模型是否存在遗漏的迁移；不生成 revision，失败时返回非零退出码 |
 | `db-upgrade` | 显式升级所选 TOML 对应的应用数据库，沿用停服和操作锁要求 |
 
-`db-revision` 与 `db-check` 从完整 TOML 读取并校验设置，在 `testing.temporary_directory` 下创建独占子目录，强制隔离数据、备份、日志、PID 和前端输出路径，不连接日常数据库或操作日常服务。临时子目录成功或失败后均清理；已有迁移脚本必须只处理数据库，不调用外部服务或自行访问其他运行路径。这些命令运行可信 Python 迁移代码，不提供脚本沙箱。自定义配置使用 `python -m app.cli --config /absolute/path/app.local.toml db-check`，`--config` 放在子命令前。
+`db-revision` 与 `db-check` 从完整 TOML 读取并校验设置，在 `testing.temporary_directory` 下创建独占子目录，强制隔离数据、备份、日志和前端输出路径，不连接日常数据库或操作日常服务。临时子目录成功或失败后均清理；已有迁移脚本必须只处理数据库，不调用外部服务或自行访问其他运行路径。这些命令运行可信 Python 迁移代码，不提供脚本沙箱。自定义配置使用 `python -m app.cli --config /absolute/path/app.local.toml db-check`，`--config` 放在子命令前。
 
 1. **按需备份已有库。** 在新增或引入 revision 之前，按本节开头的命令停服并执行 `db-backup`，确认成功后保留打印的快照路径。此时库与代码的迁移版本仍匹配；新建空库跳过这一步。
 2. **修改并导出模型。** 在 `backend/app/models/` 定义模型，并确保其模块由 `models/__init__.py` 导入，使所有表进入 `Base.metadata`。漏导入可能被识别为删表，必须审查。
@@ -352,16 +340,16 @@ pnpm --dir frontend build
 
 Python 检查统一使用 `backend/pyproject.toml`，覆盖后端和根目录的项目创建器。格式整理使用 `uv run --directory backend ruff format --config pyproject.toml . ../scripts/create_project.py` 和 `pnpm --dir frontend format`。编辑器基础约定见根目录 `.editorconfig`，前端格式规则见 `frontend/.prettierrc.toml`。自动生成的 API 类型交给生成器维护，不参与 Prettier 格式化。
 
-后端测试使用临时配置、日志、PID 和 SQLite，不读写日常数据。标记为 `integration` 的启停测试需要 macOS/Linux 的 `ps` 和进程信号权限；受限环境可单独运行 `pytest -m 'not integration'`，再在具备权限的环境运行完整测试。
+后端测试使用临时配置、日志和 SQLite，不读写日常数据。标记为 `integration` 的前台服务测试需要 macOS/Linux 的本机监听和进程信号权限；受限环境可单独运行 `pytest -m 'not integration'`，再在具备权限的环境运行完整测试。
 
 ```bash
 pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test:e2e
 ```
 
-页面测试将前端构建到本次临时目录的 `dist/`，使用临时 TOML、数据库、日志、PID 和独立服务，不清空或重建日常 `frontend/dist`。覆盖真实 API 连通、页面刷新、加载、错误重试、键盘、窄屏和 404。成功时清理临时目录，失败时打印诊断位置。macOS 受限沙箱需允许 Chromium 和本机进程控制。
+页面测试将前端构建到本次临时目录的 `dist/`，使用临时 TOML、数据库、日志和独立服务，Playwright 负责等待健康检查与结束后优雅关闭，不清空或重建日常 `frontend/dist`。覆盖真实 API 连通、页面刷新、加载、错误重试、键盘、窄屏和 404。成功时清理临时目录，失败时打印诊断位置。macOS 受限沙箱需允许 Chromium 和本机进程控制。
 
-页面测试支持 `pnpm --dir frontend test:e2e --config /absolute/path/app.test.toml`，文件必须包含全部配置。入口文件提供应用和测试设置；运行器始终将构建输出、数据库、日志、PID 和服务端口替换为本次隔离值，临时构建目录设置 `frontend_clean_output = false`，整体由运行器清理。直接执行 `pnpm exec playwright test` 会立即提示使用 `test:e2e`，避免遗漏隔离服务和 `baseURL`。
+页面测试支持 `pnpm --dir frontend test:e2e --config /absolute/path/app.test.toml`，文件必须包含全部配置。入口文件提供应用和测试设置；运行器始终将构建输出、数据库、日志和服务端口替换为本次隔离值，临时构建目录设置 `frontend_clean_output = false`，整体由运行器清理。直接执行 `pnpm exec playwright test` 会立即提示使用 `test:e2e`，避免遗漏隔离服务和 `baseURL`。
 
 ## 替换 Hello 示例
 

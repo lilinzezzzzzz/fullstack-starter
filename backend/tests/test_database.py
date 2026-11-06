@@ -113,17 +113,19 @@ def test_repeat_migration_preserves_records(settings: Settings) -> None:
         assert connection.execute("SELECT value FROM probe").fetchone() == ("keep me",)
 
 
-def test_migration_refuses_existing_pid_file_without_touching_it(settings: Settings) -> None:
-    settings.service.pid_file.write_text("12345\n")
-    original = settings.database_path.read_bytes()
-    with pytest.raises(ServiceError, match="Stop the service"):
-        upgrade_database(settings)
-    assert settings.service.pid_file.read_text() == "12345\n"
-    assert settings.database_path.read_bytes() == original
+def test_migration_refuses_running_application_without_touching_database(
+    settings: Settings,
+) -> None:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1"):
+        original = settings.database_path.read_bytes()
+        with pytest.raises(ServiceError, match="in progress"):
+            upgrade_database(settings)
+        assert settings.database_path.read_bytes() == original
+    upgrade_database(settings)
 
 
 def test_migration_cannot_race_service_operations(settings: Settings) -> None:
-    with operation_lock(settings.service.pid_file):
+    with operation_lock(settings.database_path):
         with pytest.raises(ServiceError, match="in progress"):
             upgrade_database(settings)
 

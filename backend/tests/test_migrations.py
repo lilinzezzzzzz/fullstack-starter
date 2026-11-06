@@ -82,17 +82,15 @@ def test_repository_migrations_replay_and_match_models_without_creating_runtime_
     DatabaseMigrations(migration_settings).check()
     assert not migration_settings.data_dir.exists()
     assert not migration_settings.logging.directory.exists()
-    assert not migration_settings.service.pid_file.exists()
     assert list(migration_settings.testing.temporary_directory.iterdir()) == []
 
 
-def test_check_cli_preserves_configured_database_pid_logs_and_frontend(
+def test_check_cli_preserves_configured_database_logs_and_frontend(
     migration_settings: Settings,
     tmp_path: Path,
 ) -> None:
     paths = (
         migration_settings.database_path,
-        migration_settings.service.pid_file,
         migration_settings.logging.directory / migration_settings.logging.filename,
         migration_settings.backup_directory / "keep.sqlite3",
         migration_settings.frontend_dir / "index.html",
@@ -120,7 +118,7 @@ def test_check_cli_preserves_configured_database_pid_logs_and_frontend(
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Migration check passed" in result.stdout
     assert before == {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths}
-    assert not migration_settings.service.pid_file.with_suffix(".pid.lock").exists()
+    assert not migration_settings.database_path.with_suffix(".sqlite3.lock").exists()
     assert list(migration_settings.testing.temporary_directory.iterdir()) == []
 
 

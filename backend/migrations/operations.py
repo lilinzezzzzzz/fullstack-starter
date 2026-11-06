@@ -5,7 +5,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 from app.config import BACKEND_ROOT, Settings
-from app.service_state import ServiceError, operation_lock
+from app.service_state import operation_lock
 
 
 def migration_config(settings: Settings) -> Config:
@@ -21,10 +21,5 @@ def migration_heads(settings: Settings) -> set[str]:
 
 def upgrade_database(settings: Settings) -> None:
     """管理离线维护锁；异步引擎由 env.py 管理并释放。"""
-    with operation_lock(settings.service.pid_file):
-        if settings.service.pid_file.exists():
-            raise ServiceError(
-                "Stop the service with sh scripts/service.sh stop using the same --config "
-                "before db-upgrade. An existing PID file is left untouched."
-            )
+    with operation_lock(settings.database_path):
         command.upgrade(migration_config(settings), "head")

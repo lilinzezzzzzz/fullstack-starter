@@ -52,6 +52,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "python -m app.cli db-check" in result.stdout
+    assert "sh entrypoints/service.sh" in result.stdout
     settings = exported_settings(target)
     assert settings["application"]["title"] == "ledger-app"
     assert settings["server"]["port"] == 18123
@@ -61,7 +62,6 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert "http://localhost:18123" in settings["allowed_origins"]
     assert Path(settings["data_dir"]) == target.resolve() / ".data"
     assert Path(settings["backup_directory"]) == target.resolve() / ".data/backups"
-    assert Path(settings["service"]["pid_file"]) == target.resolve() / ".run/ledger-app.pid"
     assert Path(settings["logging"]["directory"]) == target.resolve() / "logs"
     for relative in (
         ".data",
@@ -80,6 +80,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert (target / "backend/migrations/development.py").is_file()
     assert (target / "backend/migrations/operations.py").is_file()
     assert (target / "scripts/create_project.py").is_file()
+    assert (target / "entrypoints/service.sh").is_file()
     assert (target / "backend/tools/__init__.py").is_file()
     assert (target / "backend/tools/service_control.py").is_file()
     assert not (target / "backend/app/scaffold.py").exists()
@@ -251,9 +252,7 @@ def test_reusing_generated_project_excludes_custom_paths_and_rebases_absolute_pa
     config["logging"]["directory"] = str(first / "custom/logs")
     (first / "custom/logs").mkdir()
     (first / "custom/logs/private").write_text("must not copy")
-    config["service"]["pid_file"] = str(first / "custom/service.custom")
-    (first / "custom/service.custom").write_text("12345")
-    (first / "custom/service.custom.lock").touch()
+    (first / "custom/storage/app.sqlite3.lock").touch()
     (first / "configs/app.toml").write_text(tomli_w.dumps(config))
     second = tmp_path / "second"
     port = config["vite"]["port"]
@@ -265,10 +264,8 @@ def test_reusing_generated_project_excludes_custom_paths_and_rebases_absolute_pa
     assert result.returncode == 0, result.stdout + result.stderr
     settings = exported_settings(second)
     assert Path(settings["data_dir"]) == second.resolve() / "custom/storage"
-    assert Path(settings["service"]["pid_file"]) == second.resolve() / "custom/second-app.pid"
     assert not list(second.rglob("private"))
-    assert not (second / "custom/service.custom").exists()
-    assert not (second / "custom/service.custom.lock").exists()
+    assert not (second / "custom/storage/app.sqlite3.lock").exists()
     assert f"http://127.0.0.1:{port}/" in (second / "README.md").read_text()
     subprocess.run(["git", "init", "--quiet"], cwd=second, check=True, capture_output=True)
     ignored = subprocess.run(
@@ -280,15 +277,14 @@ def test_reusing_generated_project_excludes_custom_paths_and_rebases_absolute_pa
             "custom/snapshots/backup.sqlite3",
             "custom/output/index.html",
             "custom/logs/app.log",
-            "custom/second-app.pid",
-            "custom/second-app.pid.lock",
+            "custom/storage/app.sqlite3.lock",
         ],
         cwd=second,
         check=True,
         capture_output=True,
         text=True,
     )
-    assert len(ignored.stdout.splitlines()) == 6
+    assert len(ignored.stdout.splitlines()) == 5
 
 
 def test_external_runtime_path_is_rejected_without_touching_its_data(tmp_path: Path) -> None:

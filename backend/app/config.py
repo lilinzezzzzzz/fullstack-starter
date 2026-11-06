@@ -65,7 +65,6 @@ class DatabaseSettings(ConfigSection):
 class LoggingSettings(ConfigSection):
     directory: ProjectPath
     filename: Filename
-    bootstrap_filename: Filename
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     rotation: str
     retention_days: int = Field(ge=0)
@@ -123,15 +122,6 @@ class TelemetrySettings(ConfigSection):
         ):
             raise ValueError("Telemetry collection, automatic export and exit hooks must stay off")
         return self
-
-
-class ServiceSettings(ConfigSection):
-    pid_file: ProjectPath
-    startup_timeout_seconds: float = Field(gt=0)
-    shutdown_timeout_seconds: float = Field(gt=0)
-    inspection_timeout_seconds: float = Field(gt=0)
-    readiness_poll_seconds: float = Field(gt=0)
-    shutdown_poll_seconds: float = Field(gt=0)
 
 
 class ViteSettings(ConfigSection):
@@ -198,7 +188,6 @@ class Settings(ConfigSection):
     database: DatabaseSettings
     logging: LoggingSettings
     telemetry: TelemetrySettings
-    service: ServiceSettings
     vite: ViteSettings
     client: ClientSettings
     testing: TestingSettings
@@ -216,11 +205,9 @@ class Settings(ConfigSection):
             data_dir=self.data_dir,
             backup_directory=self.backup_directory,
             logging_directory=self.logging.directory,
-            pid_file=self.service.pid_file,
             temporary_directory=self.testing.temporary_directory,
             database_filename=self.database_filename,
             logging_filename=self.logging.filename,
-            bootstrap_filename=self.logging.bootstrap_filename,
         )
         return self
 

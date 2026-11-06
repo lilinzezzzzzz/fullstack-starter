@@ -25,7 +25,7 @@ package = false
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
-markers = ["integration: starts isolated local processes and requires ps and signal permissions"]
+markers = ["integration: starts isolated local processes and requires local sockets and signal permissions"]
 
 [tool.ruff]
 target-version = "py314"

@@ -10,7 +10,7 @@
 
 前后端放在同一个仓库，分别维护依赖和锁文件。FastAPI 提供 API，并托管 React SPA 的构建产物；依赖、数据库和前端产物准备好后，日常只运行一个 Python HTTP 服务。Node.js 只用于前端开发、检查和构建。
 
-前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh scripts/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。本项目不依赖 `agent-backend` 的源码。
+前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh entrypoints/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。本项目不依赖 `agent-backend` 的源码。
 
 ## 技术选型
 
@@ -32,7 +32,7 @@
 
 ## 目录结构
 
-以下省略依赖和缓存目录，`.data/`、`.run/`、`logs/` 与 `dist/` 是运行产物。
+以下省略依赖和缓存目录，`.data/`、`logs/` 与 `dist/` 是运行产物。
 
 ```text
 fullstack-starter/
@@ -42,8 +42,9 @@ fullstack-starter/
 ├── .gitignore
 ├── .node-version
 ├── configs/app.toml                  # 唯一应用配置入口
-├── scripts/
-│   ├── service.sh                    # start / stop / restart / status
+├── entrypoints/                      # 应用与服务启动入口
+│   └── service.sh                    # 前台启动，Ctrl+C 停止
+├── scripts/                          # 工程工具
 │   ├── create-project.sh             # 创建项目的 sh 入口
 │   └── create_project.py             # 复制、重命名、配置与锁文件校验
 ├── docs/
@@ -62,7 +63,7 @@ fullstack-starter/
 │   │   │   ├── environment.py         # 导入前环境隔离和 TOML 白名单桥接
 │   │   │   └── provider.py            # 本地 SDK provider 和全局传播器装配
 │   │   ├── path_safety.py            # 大小写/符号链接安全的运行路径边界
-│   │   ├── service_state.py          # 启停与离线迁移共用的操作锁
+│   │   ├── service_state.py          # 运行服务与离线迁移共用的数据库锁
 │   │   ├── database.py               # 异步引擎、会话依赖和版本检查
 │   │   ├── api.py                    # API 路由装配
 │   │   ├── frontend.py               # 静态托管与 SPA 回退边界
@@ -76,7 +77,7 @@ fullstack-starter/
 │   │   └── schemas/                  # Hello、健康检查与错误 Schema
 │   ├── tools/
 │   │   ├── __init__.py
-│   │   └── service_control.py        # 服务进程、PID 与 Uvicorn 启动
+│   │   └── service_control.py        # TOML 配置与前台 Uvicorn 启动
 │   ├── migrations/
 │   │   ├── __init__.py               # 迁移包，不在导入时执行迁移
 │   │   ├── operations.py             # Alembic 配置、head 查询、显式升级
@@ -103,18 +104,15 @@ fullstack-starter/
 │   │   └── types/api.generated.d.ts   # 自动生成，随源码维护
 │   ├── e2e/welcome.spec.ts
 │   └── dist/                         # 构建输出，不纳入 Git
-├── .data/                            # app.sqlite3、backups/
-├── logs/                             # app.log、service.log
-└── .run/                             # 进程运行状态，不纳入 Git
-    ├── fullstack-starter.pid          # 就绪后写入，正常停止后删除
-    └── fullstack-starter.pid.lock     # 启停与维护互斥锁文件，可保留
+├── .data/                            # app.sqlite3、app.sqlite3.lock、backups/
+└── logs/                             # app.log
 ```
 
 后端与前端各自维护依赖；根目录不增加前端工作区包或统一运行器。随附目录及常见依赖、构建、日志、SQLite 辅助文件和私有文件模式被 Git 忽略；自定义运行路径需同步核对忽略规则。
 
-`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用；`backend/tools/service_control.py` 是后端进程工具，在后端环境中作为 `tools.service_control` 模块运行，复用应用配置、日志及工厂。依赖方向为工具调用应用，`app/` 保留运行基础和业务分层。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
+`entrypoints/` 存放应用与服务的启动脚本，`scripts/` 存放项目生成等工程工具。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用；`backend/tools/service_control.py` 是前台启动的 Python 实现，在后端环境中作为 `tools.service_control` 模块运行，读取应用配置、装配日志及工厂，然后直接调用 `uvicorn.run()`。依赖方向为工具调用应用，`app/` 保留运行基础和业务分层。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
 
-`app/path_safety.py` 提供仅依赖标准库的路径保护规则，应用配置和创建器共同调用；`app/service_state.py` 提供启停与离线迁移共用的互斥锁，不反向依赖工具模块。
+`app/path_safety.py` 提供仅依赖标准库的路径保护规则，应用配置和创建器共同调用；`app/service_state.py` 提供运行服务与离线迁移共用的数据库文件锁，不反向依赖工具模块。
 
 ## 后端职责与数据库
 
@@ -142,9 +140,9 @@ SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用
 
 迁移代码集中在 `backend/migrations/`：`operations.py` 统一提供 Alembic 配置、head 查询和带停服保护的显式升级；`env.py` 与 `versions/` 保存执行环境和历史；`development.py` 的 `DatabaseMigrations` 负责生成和检查，同文件工厂供 CLI 组装。`app/database.py` 管理运行时连接、会话和启动版本检查，通过 `operations.py` 查询代码期望的 head。`operations.py` 只依赖配置与服务操作锁，不依赖引擎模块；`env.py` 复用引擎构造，避免循环依赖。生成与检查都先要求一个 head，在独占临时 SQLite 上重放已有迁移；生成比较 `Base.metadata` 后输出候选文件，没有结构差异时跳过空文件，手写模板需显式选择。检查重放至 head 后使用 Alembic 检测遗漏的模型变更，失败返回非零退出码。
 
-这条开发链从已完整校验的 TOML 派生临时设置，再次执行同一 Settings 校验，强制隔离数据、备份、日志、PID 和前端输出，不读写日常数据库，不使用日常服务锁；临时资源在成功或失败后清理。迁移代码仍是可信 Python，隔离不约束脚本自行访问外部资源。空库检查只覆盖重放及 Alembic 可检测的差异，旧数据保留、回填、约束和降级能力由对应 revision 的临时库回归测试证明。已交付并执行过的迁移保持不变，修正新增 revision。完整生成、审查与验证步骤见 [README](../README.md#迁移生成审查与验证)。
+这条开发链从已完整校验的 TOML 派生临时设置，再次执行同一 Settings 校验，强制隔离数据、备份、日志和前端输出，不读写日常数据库，不使用日常服务锁；临时资源在成功或失败后清理。迁移代码仍是可信 Python，隔离不约束脚本自行访问外部资源。空库检查只覆盖重放及 Alembic 可检测的差异，旧数据保留、回填、约束和降级能力由对应 revision 的临时库回归测试证明。已交付并执行过的迁移保持不变，修正新增 revision。完整生成、审查与验证步骤见 [README](../README.md#迁移生成审查与验证)。
 
-升级期间持有与服务控制器相同的操作锁；有 PID 文件时拒绝迁移，先通过同配置的 sh 入口停服。该锁防止受管理服务启动与迁移并发，不能代替停止手动启动的服务或其他数据库使用者。
+应用 lifespan 与离线升级持有同一个数据库文件锁，防止相同数据库的重复服务或迁移并发；启动时先检查数据库存在，关闭连接后释放锁。维护前按 Ctrl+C 停止服务。锁路径从实际数据库路径派生，例如 `.data/app.sqlite3.lock`，文件可保留，运行期间不删除；该机制只约束使用它的本机进程，其他数据库使用者也必须先停止。
 
 迁移测试区分真实历史和合成机制：真实历史重放至 head 并比较当前模型，合成测试则自行建立独立 revision 与 metadata，覆盖测试基线和已有后续版本两个场景，不复制应用业务历史。真实 baseline 的空表断言只迁移至 `0001_baseline`；模型索引测试使用空白临时库，备份版本断言随代码期望的 head 更新。增加正常业务迁移不应改变这些测试前提。
 
@@ -181,15 +179,15 @@ provider 不注册进程退出钩子，由 lifespan 在正常退出和启动失�
 
 ## 配置、访问与进程边界
 
-全部 107 个叶子配置项及其分组均必填，唯一入口为 `configs/app.toml`。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
+全部 100 个叶子配置项及其分组均必填，唯一入口为 `configs/app.toml`。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
 
-相对数据、备份、日志、PID 和前端路径一律相对于项目根目录。构建工具复用 Python 校验器，只把 `client` 和应用标题/版本注入浏览器，私有路径和完整服务配置不打包。后端参数改动需重启，前端公开参数改动需重新构建。工具自身的 PATH、缓存位置和浏览器安装目录不作为应用配置来源。
+相对数据、备份、日志和前端路径一律相对于项目根目录。构建工具复用 Python 校验器，只把 `client` 和应用标题/版本注入浏览器，私有路径和完整服务配置不打包。后端参数改动需重启，前端公开参数改动需重新构建。工具自身的 PATH、缓存位置和浏览器安装目录不作为应用配置来源。
 
 随附 TOML 绑定 `127.0.0.1:18001`，Vite 使用 `127.0.0.1:5173` 并代理到后端。使用 Vite 时设置 `serve_frontend = false`；切回完整应用时设置 `serve_frontend = true` 并构建。Host 与 Origin 允许列表保护本机入口；局域网或远程共享需单独设计认证和访问策略。
 
-服务始终单 worker，由 sh 入口管理。实际监听成功后才写入 PID；重复启动复用现有进程。停止前检查模块和启动配置路径，再发送 SIGTERM；正常退出清理 PID，超时保留且不强制杀进程，不按端口选择进程。启停必须使用同一配置文件路径，修改 PID 路径前先停止服务。
+服务始终单 worker，由 sh 入口在前台运行。Uvicorn 处理 Ctrl+C、SIGTERM 与优雅关闭；不创建后台子进程、PID 文件、就绪管道或启停轮询。重复服务和端口占用均明确失败，不按端口选择或终止进程；重启通过停止后再次执行启动命令完成。
 
-Loguru 将应用、链路标识和 Uvicorn 日志写入配置目录；启动早期输出进入独立的 `service.log`。不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
+Loguru 将应用、链路标识和 Uvicorn 日志写入配置目录；配置与导入阶段的错误直接显示在终端；运行日志由 `logging.console` 决定是否同时输出到终端。不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
 
 ## V1 范围与验收
 
@@ -198,13 +196,13 @@ Loguru 将应用、链路标识和 Uvicorn 日志写入配置目录；启动早�
 | Hello 示例 | 唯一示例页面与 API，展示真实连通状态、加载、错误与重试 |
 | 后端基础 | 应用工厂、严格配置、健康检查、统一错误、链路标识与日志 |
 | 数据基础 | AsyncSession、显式事务、版本检查、初始迁移和手动备份 |
-| 运行管理 | 单 FastAPI 服务、前端托管、可选 Vite、sh/PID 安全启停 |
+| 运行管理 | 单 FastAPI 服务、前端托管、可选 Vite、sh 前台启动与 Uvicorn 优雅关闭 |
 | 接口协作 | 无副作用的 OpenAPI 导出、生成类型和一致性检查 |
 | 工程质量 | 格式、lint、类型、后端与页面测试、运行和恢复说明 |
 
 V1 不包含 CRUD 应用、业务表、登录权限、任务队列、Agent/RAG、对象存储、多租户、Docker 或 CI 模板，后续按实际任务增加。
 
-后端测试使用独立临时配置、SQLite、日志和 PID，覆盖事务回滚、锁等待、并发会话隔离、取消清理、备份、静态回退和真实启停。页面测试通过 sh 启动独立服务，覆盖真实 API、刷新、404、加载、重试、键盘和窄屏；自动化以 Chromium 为基线。
+后端测试使用独立临时配置、SQLite 和日志，覆盖事务回滚、锁等待、并发会话隔离、取消清理、备份、静态回退和真实启停。页面测试由 Playwright 通过 sh 启动独立前台服务，等待健康检查并在结束后优雅关闭，覆盖真实 API、刷新、404、加载、重试、键盘和窄屏；自动化以 Chromium 为基线。
 
 E2E 的构建输出也位于本次临时目录，运行器强制替换入口配置中的输出位置并关闭目录自动清空，不重建日常 frontend/dist。独立 Playwright 配置会提示使用统一 E2E 入口。
 

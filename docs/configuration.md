@@ -2,7 +2,7 @@
 
 ## 结论与格式选择
 
-本项目的应用配置入口为 [configs/app.toml](../configs/app.toml)。当前有 **107 个叶子配置项**，所有字段和分组都必须显式提供。缺项、未知项、错误类型或无效数值直接报错，不由代码、环境变量、`.env` 或旧 JSON 文件补齐。
+本项目的应用配置入口为 [configs/app.toml](../configs/app.toml)。当前有 **100 个叶子配置项**，所有字段和分组都必须显式提供。缺项、未知项、错误类型或无效数值直接报错，不由代码、环境变量、`.env` 或旧 JSON 文件补齐。
 
 JSON 是可靠的机器交换格式，适合 API、生成数据和工具元信息。这里的配置主要由人维护，字段增加后需要分组和注释，因此选择 TOML。它不是对所有项目都最优，而是更适合当前 Python 主导、前后端同仓库的小型脚手架。[TOML 规范](https://toml.io/en/)
 
@@ -18,10 +18,9 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 | `application` | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path` | FastAPI 标题、版本、文档路由与前端应用标识；不影响固定的 Hello 欢迎语 |
 | `server` | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit` | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限 |
 | `database` | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds` | SQLite 日志与持久化模式、连接池容量和等待时间 |
-| `logging` | `directory`, `filename`, `bootstrap_filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging` | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志 |
+| `logging` | `directory`, `filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging` | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志 |
 | `telemetry` | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods` | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接 |
 | `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length` | 显式传入全部八项 SDK SpanLimits；随附值均为 0 |
-| `service` | `pid_file`, `startup_timeout_seconds`, `shutdown_timeout_seconds`, `inspection_timeout_seconds`, `readiness_poll_seconds`, `shutdown_poll_seconds` | PID 文件、启动/停止等待、进程检查超时与轮询间隔 |
 | `vite` | `host`, `port`, `proxy_target`, `strict_port`, `change_origin` | 开发服务器地址、端口、严格端口策略和代理行为 |
 | `client` | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family` | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题 |
 | `testing` | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物 |
@@ -34,19 +33,21 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 - `false`、`0` 和空的允许列表会按其真实含义使用，不通过 `or`、`??` 或模型默认值替换。
 - 浮点时间必须有限，不接受 `inf` 或 `nan`。
 
-所有相对路径均相对于项目根目录，支持绝对路径。`data_dir`、数据库文件名、备份目录、日志目录和 PID 路径独立配置。修改数据目录时也需核对备份目录。
+所有相对路径均相对于项目根目录，支持绝对路径。`data_dir`、数据库文件名、备份目录和日志目录独立配置。修改数据目录时也需核对备份目录。
 
 随附配置使用 `.data/app.sqlite3` 保存数据库，使用 `.data/backups/` 保存备份；`.data/` 整体被 Git 忽略。相对路径的解析规则不因目录以点开头而改变。
 
-`service.pid_file` 随附值为 `.run/fullstack-starter.pid`，锁文件由该路径派生为 `.run/fullstack-starter.pid.lock`。运行操作会创建 PID 父目录，不新增锁路径字段；`.run/` 仅保存进程状态，整体被 Git 忽略并从生成项目中排除。切换路径前须用旧配置停服，并确认没有控制或迁移操作持锁。
+服务改为前台运行，不再需要 `[service]` 分组及 `logging.bootstrap_filename`。旧版完整 TOML 应删除这些字段，未知字段仍明确失败，不做隐式兼容或合并。启动不接受后台控制子命令，停止使用 Ctrl+C。
 
-应用加载和项目生成共用 `backend/app/path_safety.py`：运行路径不得包含受保护源码，也不得落入其中；保护范围含 `backend/`、`frontend/`、`scripts/`、`configs/`、`docs/`、`.git/`、项目入口文件，以及遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录。只有公开输出允许位于 `frontend/dist/` 子树；私有目录与公开输出不能双向重叠。路径解析符号链接并折叠大小写后检查，避免 macOS 大小写不敏感文件系统上的别名绕过。自动清空仍仅允许实际的 `frontend/dist`；通过符号链接指向该目录外部时不允许自动清空。
+应用 lifespan 与 `db-upgrade` 共用数据库旁的文件锁，例如 `.data/app.sqlite3.lock`，路径属于固定安全机制，不额外增加配置项。锁在关闭连接后或进程退出时释放，文件可以保留；运行期间不要删除。切换数据库路径或执行迁移前先停止服务；文件锁只约束使用同一机制的本机进程。
 
-数据库文件、应用日志、bootstrap log 和 PID 文件必须指向不同路径；同一目录下的文件名相同也会被拒绝。`data_dir`、`backup_directory`、`logging.directory` 和 `service.pid_file` 还不得落入 `.venv/`、`node_modules/` 或 Python 缓存目录。
+应用加载和项目生成共用 `backend/app/path_safety.py`：运行路径不得包含受保护源码，也不得落入其中；保护范围含 `backend/`、`frontend/`、`entrypoints/`、`scripts/`、`configs/`、`docs/`、`.git/`、项目入口文件，以及遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录。只有公开输出允许位于 `frontend/dist/` 子树；私有目录与公开输出不能双向重叠。路径解析符号链接并折叠大小写后检查，避免 macOS 大小写不敏感文件系统上的别名绕过。自动清空仍仅允许实际的 `frontend/dist`；通过符号链接指向该目录外部时不允许自动清空。
 
-`testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码或公开输出目录。E2E 强制使用本次临时目录中的构建、数据、日志和 PID，不复用日常产物。
+数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。`data_dir`、`backup_directory` 和 `logging.directory` 还不得落入 `.venv/`、`node_modules/` 或 Python 缓存目录。
 
-迁移开发命令 `db-revision` 与 `db-check` 也使用这个父目录，始终清理本次临时子目录，不保留迁移数据库。命令先校验完整 TOML，再从其全部字段派生临时设置，将数据、备份、日志、PID 和前端输出限定到独占目录，并关闭前端托管与自动清空；派生结果再次通过 `Settings` 校验。数据库连接参数沿用所选 TOML，不增加配置字段或环境变量来源。强制资源隔离属于工具的固定安全边界，不能用配置关闭；`db-upgrade` 和 `db-backup` 仍操作 TOML 指定的应用数据库。操作步骤与迁移脚本能力边界见 [README](../README.md#迁移生成审查与验证)。
+`testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码或公开输出目录。E2E 强制使用本次临时目录中的构建、数据和日志，不复用日常产物。
+
+迁移开发命令 `db-revision` 与 `db-check` 也使用这个父目录，始终清理本次临时子目录，不保留迁移数据库。命令先校验完整 TOML，再从其全部字段派生临时设置，将数据、备份、日志和前端输出限定到独占目录，并关闭前端托管与自动清空；派生结果再次通过 `Settings` 校验。数据库连接参数沿用所选 TOML，不增加配置字段或环境变量来源。强制资源隔离属于工具的固定安全边界，不能用配置关闭；`db-upgrade` 和 `db-backup` 仍操作 TOML 指定的应用数据库。操作步骤与迁移脚本能力边界见 [README](../README.md#迁移生成审查与验证)。
 
 创建器保持标准库实现，只校验路径、源文件完整性和创建过程所需的关键字段；完整 Pydantic 字段、枚举和跨字段校验由生成项目的 `export-settings`、测试或首次启动执行。
 
@@ -57,13 +58,13 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 ```text
 configs/app.toml
        │ Python tomllib + Pydantic 完整校验
-       ├── 后端服务 / 数据库 / Loguru / PID 控制
+       ├── 前台 Uvicorn / 数据库 / Loguru
        └── 本地构建工具的受控 JSON 交换
                     ├── Vite 开发 / 构建参数
                     └── 浏览器白名单：client + 应用标题/版本
 ```
 
-Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默认值。构建前需要先安装后端依赖。浏览器包不包含数据目录、日志目录、PID 文件、完整服务设置或访问允许列表。
+Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默认值。构建前需要先安装后端依赖。浏览器包不包含数据目录、日志目录、完整服务设置或访问允许列表。
 
 后端参数修改后重启；前端运行参数和组件主题在构建时注入，修改后重新构建再刷新。Vite 开发模式重新启动开发服务器即可读取新值。
 
@@ -74,11 +75,11 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 配置化的边界是可调运行参数。以下内容属于协议、完整性或安全规则，固定在代码中：
 
 - API 业务路径、operation ID、HTTP 方法和响应/错误字段；界面状态文案和页面布局设计。
-- 单 worker、严格端口、本地进程身份核对、SIGTERM、PID 文件格式、退出码与不按端口杀进程。
+- 单 worker、严格端口、Uvicorn 信号与优雅关闭、服务与迁移互斥、启动失败的非零退出码与不按端口杀进程。
 - SQLite 外键、显式事务、禁止跨并发任务共享 AsyncSession、参数隐藏、最低安全版本、只读连接与独占备份创建。
 - 日志追加、UTF-8、关闭局部变量诊断和回溯扩展、单 worker 同步文件写入，以及标准日志桥接规则。
-- 前端私有信息隔离、禁止通过配置绕过 PID 安全规则或把源代码/数据目录作为公开构建输出。
-- 源码/测试目录、生成文件名、测试用例数据、进程就绪协议、CLI 交换缓冲上限与秒/毫秒换算。
+- 前端私有信息隔离、禁止通过配置绕过服务与迁移互斥或把源代码/数据目录作为公开构建输出。
+- 源码/测试目录、生成文件名、测试用例数据、页面测试健康检查、CLI 交换缓冲上限与秒/毫秒换算。
 - 第三方库尚未在本项目启用的功能，不额外制造配置项。
 
 原生 telemetry 的采集关闭约束及 SDK 参数边界见下节，属于代码校验的固定能力范围。保留 SDK 并创建上下文不等于开启采集。
@@ -114,15 +115,15 @@ SQLite 统一要求 3.51.3+，是针对 [WAL-reset 数据损坏修复](https://s
 
 旧 `configs/app.json` 已移除，没有格式兼容回退。自定义旧 JSON 需要按主 TOML 的完整字段清单迁移；旧的本地私有 JSON 仍被 Git 忽略，防止误提交，但不会被加载。
 
-当前项目仅验证单 worker。修改 PID 路径前先停止服务，并始终使用启动时相同的配置文件路径执行停止操作。
+当前项目仅使用单 worker。修改数据库路径前先按 Ctrl+C 停止服务；服务与维护命令使用同一个配置文件。
 
 ## 验证
 
 - 逐一删除配置表或字段，验证所有项均不可省略。
 - 验证错误类型、未知字段、非有限超时被拒绝，零值和 false 不被替换。
 - 验证文件中的数据库池容量、日志模式、持久化模式、文档开关和应用标识实际生效。
-- 回归 sh/PID 生命周期及 Chromium 欢迎页；测试全部使用临时 TOML、日志、PID 和数据库。
+- 回归前台启动、Ctrl+C 关闭、运行期间迁移互斥及 Chromium 欢迎页；测试全部使用临时 TOML、日志和数据库。
 
-页面测试遵守 `testing.screenshot`，不强制绕过截图配置。验证还需检查前端公开白名单，确认构建 JavaScript 不包含私有存储或 PID 路径。历次实际检查见 [实现与验证记录](history.md)。
+页面测试遵守 `testing.screenshot`，不强制绕过截图配置。验证还需检查前端公开白名单，确认构建 JavaScript 不包含私有存储或日志路径。历次实际检查见 [实现与验证记录](history.md)。
 
 数据库执行栈固定为 SQLAlchemy 2.0 AsyncEngine/AsyncSession + aiosqlite，没有同步驱动回退开关；该技术选型属于架构契约，不额外制造配置项。`database.synchronous` 调整的是 SQLite 持久化级别。

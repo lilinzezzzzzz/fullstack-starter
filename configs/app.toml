@@ -45,7 +45,6 @@ pool_timeout_seconds = 30.0
 [logging]
 directory = "logs"
 filename = "app.log"
-bootstrap_filename = "service.log"
 level = "INFO"
 format = "{time:YYYY-MM-DD HH:mm:ss.SSS Z} | {level: <8} | {extra[trace_id]} | {message}"
 rotation = "10 MB"
@@ -83,14 +82,6 @@ max_event_attributes = 0
 max_link_attributes = 0
 max_attribute_length = 0
 max_span_attribute_length = 0
-
-[service]
-pid_file = ".run/fullstack-starter.pid"
-startup_timeout_seconds = 15.0
-shutdown_timeout_seconds = 15.0
-inspection_timeout_seconds = 2.0
-readiness_poll_seconds = 0.05
-shutdown_poll_seconds = 0.1
 
 [vite]
 host = "127.0.0.1"

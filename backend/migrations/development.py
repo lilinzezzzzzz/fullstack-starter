@@ -58,7 +58,6 @@ class DatabaseMigrations:
             frontend_clean_output=False,
         )
         values["logging"]["directory"] = directory / "logs"
-        values["service"]["pid_file"] = directory / "service.pid"
         config.attributes["settings"] = Settings.model_validate(values)
         command.upgrade(config, "head")
         return config

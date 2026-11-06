@@ -1,4 +1,4 @@
-"""协调服务控制器与离线数据库维护操作。"""
+"""通过数据库旁的文件锁协调运行服务与离线迁移。"""
 
 import fcntl
 from collections.abc import Generator
@@ -11,9 +11,10 @@ class ServiceError(RuntimeError):
 
 
 @contextmanager
-def operation_lock(pid_file: Path) -> Generator[None]:
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    with pid_file.with_suffix(pid_file.suffix + ".lock").open("a") as handle:
+def operation_lock(database_path: Path) -> Generator[None]:
+    database_path = database_path.resolve()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    with database_path.with_suffix(database_path.suffix + ".lock").open("a") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:

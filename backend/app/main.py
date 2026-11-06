@@ -1,4 +1,4 @@
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -10,6 +10,7 @@ from app.errors import register_error_handlers
 from app.frontend import FrontendFiles, check_frontend_directory
 from app.logging_setup import configure_logging
 from app.middleware import RequestMiddleware
+from app.service_state import operation_lock
 from app.telemetry import new_tracer_provider
 
 
@@ -22,15 +23,17 @@ def create_app(settings: Settings) -> FastAPI:
             configure_logging(settings.logging)
             if settings.serve_frontend:
                 check_frontend_directory(settings.frontend_dir)
-            engine = create_database_engine(settings)
-            try:
-                await check_database_revision(engine, settings)
-                application.state.session_factory = async_sessionmaker(
-                    engine, expire_on_commit=False
-                )
-                yield
-            finally:
-                await engine.dispose()
+            with ExitStack() as runtime:
+                engine = create_database_engine(settings)
+                try:
+                    runtime.enter_context(operation_lock(settings.database_path))
+                    await check_database_revision(engine, settings)
+                    application.state.session_factory = async_sessionmaker(
+                        engine, expire_on_commit=False
+                    )
+                    yield
+                finally:
+                    await engine.dispose()
         finally:
             tracer_provider.shutdown()
 

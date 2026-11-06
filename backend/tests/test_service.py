@@ -1,120 +1,32 @@
 import json
+import os
 import signal
 import socket
 import subprocess
-import sys
+import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 import pytest
 
-from app.config import PROJECT_ROOT, load_settings
+from app.config import PROJECT_ROOT, Settings, load_settings
+from app.service_state import ServiceError, operation_lock
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, response_trace_id, save_config, write_config
-from tools import service_control
 
 
-def test_invalid_pid_is_never_used(tmp_path: Path) -> None:
-    pid_file = tmp_path / "service.pid"
-    for value in ("", "-1", "0", "1", "not-a-pid", "123\n456"):
-        pid_file.write_text(value)
-        with pytest.raises(service_control.ServiceError, match="Invalid PID"):
-            service_control.read_pid(pid_file)
-        assert pid_file.read_text() == value
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "S /usr/bin/other-service\n",
-        "S /usr/bin/python -m tools.service_control run --ready-fd 3 --config {config}.other\n",
-    ],
-)
-def test_foreign_pid_is_not_signalled_or_deleted(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    command: str,
-) -> None:
-    config = write_config(tmp_path)
-    settings = load_settings(config)
-    settings.service.pid_file.write_text("12345\n")
-    signals = []
-    monkeypatch.setattr(service_control.os, "kill", lambda pid, sig: signals.append((pid, sig)))
-    monkeypatch.setattr(
-        service_control.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args,
-            0,
-            command.format(config=config),
-            "",
-        ),
-    )
-    with pytest.raises(service_control.ServiceError, match="not this service"):
-        service_control.stop_service(settings, config)
-    assert signals == [(12345, 0)]
-    assert settings.service.pid_file.read_text() == "12345\n"
-
-
-def test_process_inspection_failure_is_fail_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = write_config(tmp_path)
-    settings = load_settings(config)
-    settings.service.pid_file.write_text("12345\n")
-    signals = []
-    monkeypatch.setattr(service_control.os, "kill", lambda pid, sig: signals.append((pid, sig)))
-    monkeypatch.setattr(
-        service_control.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, "", "permission denied"),
-    )
-    with pytest.raises(service_control.ServiceError, match="Cannot verify"):
-        service_control.stop_service(settings, config)
-    assert signals == [(12345, 0)]
-    assert settings.service.pid_file.exists()
-
-
-def test_stop_timeout_preserves_pid_without_force_kill(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = write_config(tmp_path)
-    settings = load_settings(config)
-    settings.service.shutdown_timeout_seconds = 0.01
-    settings.service.pid_file.write_text("12345\n")
-    signals = []
-    monkeypatch.setattr(service_control, "is_owned_process", lambda *args: True)
-    monkeypatch.setattr(service_control, "process_info", lambda *args: ("S", "owned-service"))
-    monkeypatch.setattr(service_control.os, "kill", lambda pid, sig: signals.append((pid, sig)))
-    with pytest.raises(service_control.ServiceError, match="No SIGKILL"):
-        service_control.stop_service(settings, config)
-    assert signals == [(12345, signal.SIGTERM)]
-    assert settings.service.pid_file.exists()
-
-
-def test_operation_lock_prevents_concurrent_controllers(tmp_path: Path) -> None:
-    path = tmp_path / ".run/service.pid"
-    with service_control.operation_lock(path):
-        assert path.with_suffix(".pid.lock").is_file()
-        with pytest.raises(service_control.ServiceError, match="in progress"):
-            with service_control.operation_lock(path):
-                pass
-
-
-def test_stop_tolerates_argv_disappearing_during_normal_exit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = write_config(tmp_path)
-    settings = load_settings(config)
-    settings.service.pid_file.write_text("12345\n")
-    signals = []
-    states = iter([("E", "(python3.14)"), None])
-    monkeypatch.setattr(service_control, "is_owned_process", lambda *args: True)
-    monkeypatch.setattr(service_control, "process_info", lambda *args: next(states))
-    monkeypatch.setattr(service_control.os, "kill", lambda pid, sig: signals.append((pid, sig)))
-    service_control.stop_service(settings, config)
-    assert signals == [(12345, signal.SIGTERM)]
-    assert not settings.service.pid_file.exists()
+def test_database_lock_is_exclusive_and_released_after_failure(tmp_path: Path) -> None:
+    database = tmp_path / "data/app.sqlite3"
+    with pytest.raises(ValueError, match="probe"):
+        with operation_lock(database):
+            with pytest.raises(ServiceError, match="in progress"):
+                with operation_lock(database):
+                    pytest.fail("The second operation acquired an active lock")
+            raise ValueError("probe")
+    with operation_lock(database):
+        assert not database.exists()
 
 
 def unused_port() -> int:
@@ -123,110 +35,119 @@ def unused_port() -> int:
         return connection.getsockname()[1]
 
 
-def controller(config: Path, action: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        ["sh", str(PROJECT_ROOT / "scripts/service.sh"), action, "--config", str(config)],
-        cwd=config.parent,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert result.returncode == expected, result.stdout + result.stderr
-    return result
+@contextmanager
+def foreground_service(
+    config: Path,
+) -> Generator[tuple[subprocess.Popen[bytes], Path]]:
+    output_file = config.with_suffix(".foreground.log")
+    with output_file.open("w") as output:
+        process = subprocess.Popen(
+            ["sh", str(PROJECT_ROOT / "entrypoints/service.sh"), "--config", str(config)],
+            cwd=config.parent,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            yield process, output_file
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=3)
+
+
+def wait_for_service(process: subprocess.Popen[bytes], settings: Settings, output: Path) -> str:
+    base_url = f"http://127.0.0.1:{settings.server.port}"
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            pytest.fail(output.read_text())
+        try:
+            with urlopen(f"{base_url}/api/health", timeout=1) as response:
+                if response.status == 200:
+                    return base_url
+        except OSError:
+            time.sleep(0.05)
+    pytest.fail(f"Service did not become ready: {output.read_text()}")
 
 
 @pytest.mark.integration
-def test_shell_start_status_restart_stop_and_stale_pid(
+def test_foreground_service_ctrl_c_and_maintenance_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = write_config(tmp_path / "configuration with spaces")
     data = read_config(config)
-    data["service"]["pid_file"] = str(config.parent / ".run/service.pid")
     data["server"]["port"] = unused_port()
     data["server"]["graceful_shutdown_seconds"] = 1
-    data["service"]["shutdown_timeout_seconds"] = 5
+    data["logging"]["console"] = True
     save_config(config, data)
     settings = load_settings(config)
     upgrade_database(settings)
-    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "must-not-be-used"))
-    monkeypatch.setenv("WEB_CONCURRENCY", "8")
-    monkeypatch.setenv("LOGURU_LEVEL", "ERROR")
-    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
     monkeypatch.setenv("OTEL_PROPAGATORS", "not-installed-propagator")
-    monkeypatch.setenv("OTEL_PYTHON_CONTEXT", "not-installed-context")
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
     monkeypatch.setenv("FASTAPI_OTEL_AUTO_CONFIGURE", "true")
-    try:
-        controller(config, "start")
-        first_pid = service_control.read_pid(settings.service.pid_file)
-        assert first_pid is not None
-        info = service_control.process_info(first_pid, settings.service.inspection_timeout_seconds)
-        assert info is not None
-        assert " -m tools.service_control run " in info[1]
-        assert "Running" in controller(config, "status").stdout
-        assert "Already running" in controller(config, "start").stdout
-        assert service_control.read_pid(settings.service.pid_file) == first_pid
-        migration = subprocess.run(
-            [sys.executable, "-m", "app.cli", "--config", str(config), "db-upgrade"],
-            cwd=PROJECT_ROOT / "backend",
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert migration.returncode == 1
-        assert "Stop the service" in migration.stderr
+    with foreground_service(config) as (process, output):
+        base_url = wait_for_service(process, settings, output)
         with urlopen(
             Request(
-                f"http://127.0.0.1:{settings.server.port}/api/v1/hello",
+                f"{base_url}/api/v1/hello",
                 headers={"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"},
             ),
             timeout=3,
         ) as response:
             assert json.load(response) == {"message": "Hello World"}
             assert response_trace_id(response.headers) == "4bf92f3577b34da6a3ce929d0e0e4736"
-        with urlopen(
-            f"http://127.0.0.1:{settings.server.port}/api/v1/hello", timeout=3
-        ) as response:
-            identifier = response_trace_id(response.headers)
-            assert len(identifier) == 32 and int(identifier, 16) != 0
-            assert identifier != "4bf92f3577b34da6a3ce929d0e0e4736"
-        controller(config, "restart")
-        assert service_control.read_pid(settings.service.pid_file) != first_pid
-        controller(config, "stop")
-        assert not settings.service.pid_file.exists()
-        controller(config, "status", expected=3)
-        controller(config, "stop")
-        dead = subprocess.Popen([sys.executable, "-c", "pass"])
-        dead.wait(timeout=3)
-        settings.service.pid_file.write_text(f"{dead.pid}\n")
-        controller(config, "start")
-        assert service_control.read_pid(settings.service.pid_file) != dead.pid
-    finally:
-        controller(config, "stop")
-    assert not settings.service.pid_file.exists()
-    assert settings.service.pid_file.with_suffix(".pid.lock").is_file()
-    assert not (config.parent / "service.pid").exists()
-    assert not (tmp_path / "must-not-be-used").exists()
-    log = (settings.logging.directory / settings.logging.filename).read_text()
-    assert "GET /api/v1/hello 200" in log
-    assert "Application shutdown complete" in log
-    assert settings.server.workers == 1
+        migration = subprocess.run(
+            [
+                "uv",
+                "run",
+                "--directory",
+                str(PROJECT_ROOT / "backend"),
+                "python",
+                "-m",
+                "app.cli",
+                "--config",
+                str(config),
+                "db-upgrade",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert migration.returncode != 0
+        assert "in progress" in migration.stderr
+        second = config.parent / "second.toml"
+        data["server"]["port"] = unused_port()
+        save_config(second, data)
+        with foreground_service(second) as (duplicate, duplicate_output):
+            assert duplicate.wait(timeout=10) != 0
+            assert "in progress" in duplicate_output.read_text()
+        assert process.poll() is None
+        os.killpg(process.pid, signal.SIGINT)
+        process.wait(timeout=10)
+    assert "Application shutdown complete" in output.read_text()
+    assert not list(tmp_path.rglob("*.pid"))
+    upgrade_database(settings)
 
 
 @pytest.mark.integration
-def test_failed_start_does_not_record_running_pid(tmp_path: Path) -> None:
+def test_failed_start_does_not_create_or_upgrade_database(tmp_path: Path) -> None:
     config = write_config(tmp_path)
     settings = load_settings(config)
-    controller(config, "start", expected=1)
-    assert not settings.service.pid_file.exists()
+    with foreground_service(config) as (process, _output):
+        assert process.wait(timeout=10) != 0
+    log = settings.logging.directory / settings.logging.filename
+    assert "Database missing" in log.read_text()
     assert not settings.database_path.exists()
-    assert (
-        "Database missing" in (settings.logging.directory / settings.logging.filename).read_text()
-    )
+    with operation_lock(settings.database_path):
+        pass
 
 
 @pytest.mark.integration
-def test_occupied_port_is_not_adopted_or_stopped(tmp_path: Path) -> None:
+def test_occupied_port_is_left_untouched_and_database_lock_is_released(tmp_path: Path) -> None:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen()
@@ -236,6 +157,7 @@ def test_occupied_port_is_not_adopted_or_stopped(tmp_path: Path) -> None:
         save_config(config, data)
         settings = load_settings(config)
         upgrade_database(settings)
-        controller(config, "start", expected=1)
-        assert not settings.service.pid_file.exists()
+        with foreground_service(config) as (process, _output):
+            assert process.wait(timeout=10) != 0
         assert listener.getsockname()[1] == settings.server.port
+        upgrade_database(settings)
