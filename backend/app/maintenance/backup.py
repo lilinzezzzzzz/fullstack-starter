@@ -1,10 +1,10 @@
-"""Verified SQLite snapshots for the local maintenance CLI."""
+"""为本地维护 CLI 提供经过校验的 SQLite 快照。"""
 
 import asyncio
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import uuid7
 
 import aiosqlite
 
@@ -14,7 +14,7 @@ from migrations.operations import migration_heads
 
 
 class DatabaseBackup:
-    """Create an exclusive, verified snapshot without owning service state."""
+    """以独占方式创建并校验快照，不负责管理服务状态。"""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -30,7 +30,8 @@ class DatabaseBackup:
         backup_dir = settings.backup_directory
         backup_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        target = backup_dir / f"app-{stamp}-{uuid4().hex[:8]}.sqlite3"
+        # UUIDv7 前部是时间戳，保留完整值以避免截断后丢失唯一性信息。
+        target = backup_dir / f"app-{stamp}-{uuid7().hex}.sqlite3"
         descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(descriptor)
         try:
@@ -39,8 +40,8 @@ class DatabaseBackup:
                 aiosqlite.connect(source_uri, uri=True, autocommit=True) as source,
                 aiosqlite.connect(target, autocommit=True) as destination,
             ):
-                # SQLite's native backup continues on the driver's worker after task cancellation.
-                # Drain that one copy before closing its target or removing the partial snapshot.
+                # 任务取消后，SQLite 原生备份仍会在驱动的工作线程中继续执行。
+                # 关闭目标连接或删除未完成的快照之前，须等待本次复制结束。
                 copy = asyncio.create_task(source.backup(destination))
                 try:
                     await asyncio.shield(copy)
@@ -64,5 +65,5 @@ class DatabaseBackup:
 
 
 def new_database_backup(settings: Settings) -> DatabaseBackup:
-    """Composition factory for the maintenance CLI."""
+    """为维护 CLI 组装依赖并创建实例。"""
     return DatabaseBackup(settings)

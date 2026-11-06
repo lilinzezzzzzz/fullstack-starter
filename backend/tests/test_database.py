@@ -3,7 +3,10 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import Mock
+from uuid import UUID
 
 import pytest
 from alembic import command
@@ -171,6 +174,26 @@ async def test_backup_includes_committed_wal_data_and_never_overwrites(settings:
             assert snapshot.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert snapshot.execute("SELECT value FROM probe").fetchone() == ("snapshot data",)
         assert source.execute("SELECT value FROM probe").fetchone() == ("snapshot data",)
+
+
+@pytest.mark.anyio
+async def test_backup_names_stay_unique_when_timestamps_match(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = datetime(2026, 11, 6, tzinfo=UTC)
+    monkeypatch.setattr("app.maintenance.backup.datetime", clock)
+
+    backup = DatabaseBackup(settings)
+    first = await backup.create_snapshot()
+    second = await backup.create_snapshot()
+    assert first != second
+    assert first.is_file() and second.is_file()
+    for snapshot in (first, second):
+        stamp, identifier = snapshot.stem.removeprefix("app-").split("-")
+        assert stamp == "20261106T000000000000Z"
+        assert len(identifier) == 32
+        assert UUID(hex=identifier).version == 7
 
 
 @pytest.mark.anyio
