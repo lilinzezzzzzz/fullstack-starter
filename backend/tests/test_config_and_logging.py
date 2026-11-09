@@ -63,6 +63,7 @@ def test_loguru_file_and_uvicorn_bridge_do_not_duplicate(settings) -> None:
     configure_logging(settings.logging)
     logger.bind(trace_id="trace-probe").info("loguru-probe")
     logging.getLogger("uvicorn.error").info("uvicorn-probe")
+    logger.complete()
     contents = (settings.logging.directory / settings.logging.filename).read_text()
     assert contents.count("loguru-probe") == 1
     assert contents.count("uvicorn-probe") == 1

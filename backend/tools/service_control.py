@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import uvicorn
+from loguru import logger
 
 from app.config import CONFIG_FILE, load_settings
 from app.logging_setup import configure_logging
@@ -37,6 +38,8 @@ def main() -> None:
         )
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(1, f"Error: {exc}\n")
+    finally:
+        logger.complete()
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ def configure_logging(settings: LoggingSettings) -> None:
         "format": settings.format,
         "backtrace": False,
         "diagnose": False,
-        "enqueue": False,
+        "enqueue": True,
         "colorize": False,
         "serialize": settings.serialize,
         "catch": True,

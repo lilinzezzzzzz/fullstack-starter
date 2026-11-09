@@ -1,6 +1,7 @@
 from contextlib import ExitStack, asynccontextmanager
 
 from fastapi import FastAPI
+from loguru import logger
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api import router
@@ -35,7 +36,10 @@ def create_app(settings: Settings) -> FastAPI:
                 finally:
                     await engine.dispose()
         finally:
-            tracer_provider.shutdown()
+            try:
+                tracer_provider.shutdown()
+            finally:
+                await logger.complete()
 
     application = FastAPI(
         telemetry={

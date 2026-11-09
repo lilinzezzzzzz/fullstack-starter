@@ -4,6 +4,14 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-09 日志改为队列后台写入
+
+Loguru 文件和可选终端输出显式使用 `enqueue=True`，由后台线程处理输出；`backtrace=False` 和 `diagnose=False` 保持不变。应用 lifespan 清理与服务入口的 `finally` 等待日志队列处理完成，信号处理继续由 Uvicorn 负责。同步 README、当前设计和固定配置边界，不增加 TOML 字段。
+
+日志桥接测试在读文件前显式等待队列，真实 Ctrl+C 集成测试检查访问日志、应用关闭和服务进程结束日志均已写入文件。本次 macOS、Python 3.14.7 的观察结果：相关定向回归 86 项通过；完整后端测试 208 项通过，耗时 23.12 秒；Ruff lint、全部 50 个 Python 文件的格式检查和 Git diff 空白检查通过。
+
+验证使用任务临时目录中的配置、SQLite、日志和生成副本，未启停日常服务。本次未执行前端构建、浏览器 E2E 或性能基准测试，未暂存或提交改动。
+
 ## 2026-11-09 共用辅助模块归入 utils
 
 新增轻量的 `backend/app/utils/` 包，将路径保护模块迁入 `utils/path_safety.py`，将原 `service_state.py` 迁入 `utils/database_lock.py`。两个模块的内容与迁移前逐字节一致，保留 `ServiceError`、`operation_lock` 和路径校验行为。同步应用、迁移、测试的导入，以及项目创建器按物理路径加载路径策略的入口；当前目录设计和配置文档同步更新。

@@ -184,7 +184,7 @@ sh 入口在后端环境中执行 `python -m tools.service_control`。[backend/t
 
 运行中的应用与 `db-upgrade` 使用数据库旁的同一个文件锁，例如 `.data/app.sqlite3.lock`。锁由内核在退出时释放，锁文件可以保留；运行期间不要删除锁文件。重复启动相同数据库的服务会明确失败，端口被其他程序占用时也只报错，不发送信号。
 
-默认日志写入根目录 `logs/app.log`；`logging.console = true` 时同时输出到终端。配置或导入阶段的错误直接显示在终端，不再使用独立的 `service.log`。诊断日志不打印局部变量。
+默认日志通过队列交给后台线程写入根目录 `logs/app.log`；`logging.console = true` 时也通过队列输出到终端。应用和服务入口清理时等待日志队列处理完成。配置或导入阶段的错误直接显示在终端，不再使用独立的 `service.log`。诊断日志不打印局部变量。
 
 直接修改模板或已有项目的运行路径时，应同步维护 `.gitignore`。生成器只会自动补充新副本的规则。使用 `git check-ignore --no-index <实际产物路径>` 核对，并在提交前检查 `git status --short --untracked-files=all`。
 

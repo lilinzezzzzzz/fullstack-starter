@@ -129,6 +129,10 @@ def test_foreground_service_ctrl_c_and_maintenance_lock(
         os.killpg(process.pid, signal.SIGINT)
         process.wait(timeout=10)
     assert "Application shutdown complete" in output.read_text()
+    contents = (settings.logging.directory / settings.logging.filename).read_text()
+    assert "4bf92f3577b34da6a3ce929d0e0e4736 | GET /api/v1/hello 200" in contents
+    assert "Application shutdown complete" in contents
+    assert "Finished server process" in contents
     assert not list(tmp_path.rglob("*.pid"))
     upgrade_database(settings)
 
