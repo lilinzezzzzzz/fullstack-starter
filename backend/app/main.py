@@ -10,8 +10,8 @@ from app.errors import register_error_handlers
 from app.frontend import FrontendFiles, check_frontend_directory
 from app.logging_setup import configure_logging
 from app.middleware import RequestMiddleware
-from app.service_state import operation_lock
 from app.telemetry import new_tracer_provider
+from app.utils.database_lock import operation_lock
 
 
 def create_app(settings: Settings) -> FastAPI:

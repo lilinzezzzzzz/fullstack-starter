@@ -23,7 +23,7 @@ from app.database import (
 )
 from app.main import create_app
 from app.maintenance.backup import DatabaseBackup
-from app.service_state import ServiceError, operation_lock
+from app.utils.database_lock import ServiceError, operation_lock
 from migrations.operations import migration_config, upgrade_database
 from tests.helpers import settings_for, write_config
 

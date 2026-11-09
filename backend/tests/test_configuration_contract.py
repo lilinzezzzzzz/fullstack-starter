@@ -10,7 +10,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from app.config import PROJECT_ROOT, load_settings
 from app.database import create_database_engine
 from app.main import create_app
-from app.path_safety import validate_runtime_paths
+from app.utils.path_safety import validate_runtime_paths
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, save_config, write_config
 

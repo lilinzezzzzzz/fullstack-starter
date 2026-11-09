@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def load_path_policy():
     # 仅加载基于标准库的共享路径策略；创建项目无需应用依赖。
     spec = importlib.util.spec_from_file_location(
-        "scaffold_path_safety", PROJECT_ROOT / "backend/app/path_safety.py"
+        "scaffold_path_safety", PROJECT_ROOT / "backend/app/utils/path_safety.py"
     )
     if spec is None or spec.loader is None:
         raise ValueError("The scaffold path policy is missing.")

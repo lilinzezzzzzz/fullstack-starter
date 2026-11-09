@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-from app.path_safety import path_is_relative_to, validate_runtime_paths
+from app.utils.path_safety import path_is_relative_to, validate_runtime_paths
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = PROJECT_ROOT / "backend"

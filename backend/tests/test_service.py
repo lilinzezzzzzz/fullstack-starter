@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from app.config import PROJECT_ROOT, Settings, load_settings
-from app.service_state import ServiceError, operation_lock
+from app.utils.database_lock import ServiceError, operation_lock
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, response_trace_id, save_config, write_config
 

@@ -5,7 +5,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 from app.config import BACKEND_ROOT, Settings
-from app.service_state import operation_lock
+from app.utils.database_lock import operation_lock
 
 
 def migration_config(settings: Settings) -> Config:

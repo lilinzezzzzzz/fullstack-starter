@@ -41,7 +41,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 应用 lifespan 与 `db-upgrade` 共用数据库旁的文件锁，例如 `.data/app.sqlite3.lock`，路径属于固定安全机制，不额外增加配置项。锁在关闭连接后或进程退出时释放，文件可以保留；运行期间不要删除。切换数据库路径或执行迁移前先停止服务；文件锁只约束使用同一机制的本机进程。
 
-应用加载和项目生成共用 `backend/app/path_safety.py`：运行路径不得包含受保护源码，也不得落入其中；保护范围含 `backend/`、`frontend/`、`entrypoints/`、`scripts/`、`configs/`、`docs/`、`.git/`、项目入口文件，以及遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录。只有公开输出允许位于 `frontend/dist/` 子树；私有目录与公开输出不能双向重叠。路径解析符号链接并折叠大小写后检查，避免 macOS 大小写不敏感文件系统上的别名绕过。自动清空仍仅允许实际的 `frontend/dist`；通过符号链接指向该目录外部时不允许自动清空。
+应用加载和项目生成共用 `backend/app/utils/path_safety.py`：运行路径不得包含受保护源码，也不得落入其中；保护范围含 `backend/`、`frontend/`、`entrypoints/`、`scripts/`、`configs/`、`docs/`、`.git/`、项目入口文件，以及遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录。只有公开输出允许位于 `frontend/dist/` 子树；私有目录与公开输出不能双向重叠。路径解析符号链接并折叠大小写后检查，避免 macOS 大小写不敏感文件系统上的别名绕过。自动清空仍仅允许实际的 `frontend/dist`；通过符号链接指向该目录外部时不允许自动清空。
 
 数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。`data_dir`、`backup_directory` 和 `logging.directory` 还不得落入 `.venv/`、`node_modules/` 或 Python 缓存目录。
 

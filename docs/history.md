@@ -4,6 +4,14 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-09 共用辅助模块归入 utils
+
+新增轻量的 `backend/app/utils/` 包，将路径保护模块迁入 `utils/path_safety.py`，将原 `service_state.py` 迁入 `utils/database_lock.py`。两个模块的内容与迁移前逐字节一致，保留 `ServiceError`、`operation_lock` 和路径校验行为。同步应用、迁移、测试的导入，以及项目创建器按物理路径加载路径策略的入口；当前目录设计和配置文档同步更新。
+
+本次 macOS、Python 3.14.7、SQLite 3.53.1 的观察结果：Ruff lint 和全部 50 个 Python 文件的格式检查通过；完整后端测试 208 项通过，耗时 25.72 秒，包含项目生成、配置与路径保护、数据库文件锁互斥、真实前台服务启停、应用导入与遥测回归。
+
+验证使用任务临时目录中的配置、SQLite、日志和生成副本。本次未运行前端构建或浏览器 E2E，未暂存或提交改动。
+
 ## 2026-11-06 启动入口归入 entrypoints
 
 将服务启动脚本从 `scripts/service.sh` 移至 `entrypoints/service.sh`，保留脚本内容、可执行权限和前台运行方式；`scripts/` 保留项目生成等工程工具，Python 启动实现继续位于 `backend/tools/service_control.py`。当前命令、项目规则、目录设计、服务集成测试及页面测试调用同步更新，既有历史记录保留当时路径。

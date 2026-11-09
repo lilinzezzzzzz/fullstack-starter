@@ -62,8 +62,9 @@ fullstack-starter/
 │   │   │   ├── __init__.py            # 轻量工厂导出入口
 │   │   │   ├── environment.py         # 导入前环境隔离和 TOML 白名单桥接
 │   │   │   └── provider.py            # 本地 SDK provider 和全局传播器装配
-│   │   ├── path_safety.py            # 大小写/符号链接安全的运行路径边界
-│   │   ├── service_state.py          # 运行服务与离线迁移共用的数据库锁
+│   │   ├── utils/                    # 应用与工程工具共用的底层辅助模块
+│   │   │   ├── database_lock.py      # 运行服务与离线迁移共用的数据库锁
+│   │   │   └── path_safety.py        # 大小写/符号链接安全的运行路径边界
 │   │   ├── database.py               # 异步引擎、会话依赖和版本检查
 │   │   ├── api.py                    # API 路由装配
 │   │   ├── frontend.py               # 静态托管与 SPA 回退边界
@@ -112,7 +113,7 @@ fullstack-starter/
 
 `entrypoints/` 存放应用与服务的启动脚本，`scripts/` 存放项目生成等工程工具。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用；`backend/tools/service_control.py` 是前台启动的 Python 实现，在后端环境中作为 `tools.service_control` 模块运行，读取应用配置、装配日志及工厂，然后直接调用 `uvicorn.run()`。依赖方向为工具调用应用，`app/` 保留运行基础和业务分层。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
 
-`app/path_safety.py` 提供仅依赖标准库的路径保护规则，应用配置和创建器共同调用；`app/service_state.py` 提供运行服务与离线迁移共用的数据库文件锁，不反向依赖工具模块。
+`app/utils/` 存放供应用与工程工具复用的底层辅助模块，由调用方提供必要参数，包入口保持轻量。当前模块均仅依赖标准库：`path_safety.py` 提供应用配置和创建器共用的路径保护规则；`database_lock.py` 提供运行服务与离线迁移共用的数据库文件锁。辅助模块不反向依赖配置、业务服务或工具模块。
 
 ## 后端职责与数据库
 
