@@ -12,18 +12,18 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 ## 已收拢的运行参数
 
-| 分组 | 必填字段 | 使用位置 |
-| --- | --- | --- |
-| 根配置 | `data_dir`, `database_filename`, `backup_directory`, `frontend_dir`, `serve_frontend`, `frontend_clean_output`, `sqlite_timeout_seconds`, `allowed_hosts`, `allowed_origins` | 数据库、备份、前端输出和本机访问边界 |
-| `application` | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path` | FastAPI 标题、版本、文档路由与前端应用标识；不影响固定的 Hello 欢迎语 |
-| `server` | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit` | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限 |
-| `database` | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds` | SQLite 日志与持久化模式、连接池容量和等待时间 |
-| `logging` | `directory`, `filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging` | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志 |
-| `telemetry` | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods` | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接 |
-| `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length` | 显式传入全部八项 SDK SpanLimits；随附值均为 0 |
-| `vite` | `host`, `port`, `proxy_target`, `strict_port`, `change_origin` | 开发服务器地址、端口、严格端口策略和代理行为 |
-| `client` | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family` | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题 |
-| `testing` | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物 |
+| 分组                    | 必填字段                                                                                                                                                                                                                                                                                                                                                                      | 使用位置                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 根配置                  | `data_dir`, `database_filename`, `backup_directory`, `frontend_dir`, `serve_frontend`, `frontend_clean_output`, `sqlite_timeout_seconds`, `allowed_hosts`, `allowed_origins`                                                                                                                                                                                                  | 数据库、备份、前端输出和本机访问边界                                  |
+| `application`           | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path`                                                                                                                                                                                                                                                             | FastAPI 标题、版本、文档路由与前端应用标识；不影响固定的 Hello 欢迎语 |
+| `server`                | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit`                                                                                                                                                                                                                                                                  | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限               |
+| `database`              | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds`                                                                                                                                                                                                                                                                                            | SQLite 日志与持久化模式、连接池容量和等待时间                         |
+| `logging`               | `directory`, `filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging`                                                                                                                                                                                                                                            | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志           |
+| `telemetry`             | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods`                                                                                                                                                                       | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接                  |
+| `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length`                                                                                                                                                                                                        | 显式传入全部八项 SDK SpanLimits；随附值均为 0                         |
+| `vite`                  | `host`, `port`, `proxy_target`, `strict_port`, `change_origin`                                                                                                                                                                                                                                                                                                                | 开发服务器地址、端口、严格端口策略和代理行为                          |
+| `client`                | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family`              | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题                    |
+| `testing`               | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物        |
 
 具体取值、单位与注释以主 TOML 文件为准。提供在文件里的数值是操作者选择的值，不是缺失时的默认值。
 
@@ -37,17 +37,20 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 随附配置使用 `.data/app.sqlite3` 保存数据库，使用 `.data/backups/` 保存备份；`.data/` 整体被 Git 忽略。相对路径的解析规则不因目录以点开头而改变。
 
-服务改为前台运行，不再需要 `[service]` 分组及 `logging.bootstrap_filename`。旧版完整 TOML 应删除这些字段，未知字段仍明确失败，不做隐式兼容或合并。启动不接受后台控制子命令，停止使用 Ctrl+C。
-
 应用 lifespan 与 `db-upgrade` 共用数据库旁的文件锁，例如 `.data/app.sqlite3.lock`，路径属于固定安全机制，不额外增加配置项。锁在关闭连接后或进程退出时释放，文件可以保留；运行期间不要删除。切换数据库路径或执行迁移前先停止服务；文件锁只约束使用同一机制的本机进程。
 
-应用加载和项目生成共用 `backend/app/utils/path_safety.py`：运行路径不得包含受保护源码，也不得落入其中；保护范围含 `backend/`、`frontend/`、`entrypoints/`、`scripts/`、`configs/`、`docs/`、`.git/`、项目入口文件，以及遗留 `data/`、`.data/`、`logs/`、`.run/`、`.venv/`、`node_modules/` 和 Python 缓存目录。只有公开输出允许位于 `frontend/dist/` 子树；私有目录与公开输出不能双向重叠。路径解析符号链接并折叠大小写后检查，避免 macOS 大小写不敏感文件系统上的别名绕过。自动清空仍仅允许实际的 `frontend/dist`；通过符号链接指向该目录外部时不允许自动清空。
+应用加载和项目生成共用 `backend/app/utils/path_safety.py`，按路径用途分别检查：
 
-数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。`data_dir`、`backup_directory` 和 `logging.directory` 还不得落入 `.venv/`、`node_modules/` 或 Python 缓存目录。
+- 数据、备份与日志是私有目录，不得与受保护源码、项目根的依赖/工具缓存目录或公开输出双向重叠。默认 `.data/`、`.data/backups/` 与 `logs/` 是允许的私有路径，私有目录之间不统一禁止包含关系。
+- 公开输出额外避开根目录遗留的 `data/`、`.data/`、`logs/`、`.run/`，以及 `.venv/`、`node_modules/`、`.pytest_cache/`、`.ruff_cache/`。`frontend/` 内只允许 `frontend/dist/` 子树作为输出位置。
+- 源码保护覆盖 `backend/`、`frontend/`、`entrypoints/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
+- 自动清空只允许实际的 `frontend/dist`，其子目录或指向外部的符号链接不能启用自动清空。其他合法输出位置需显式设置 `frontend_clean_output = false`。
+
+数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。
 
 `testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码或公开输出目录。E2E 强制使用本次临时目录中的构建、数据和日志，不复用日常产物。
 
-迁移开发命令 `db-revision` 与 `db-check` 也使用这个父目录，始终清理本次临时子目录，不保留迁移数据库。命令先校验完整 TOML，再从其全部字段派生临时设置，将数据、备份、日志和前端输出限定到独占目录，并关闭前端托管与自动清空；派生结果再次通过 `Settings` 校验。数据库连接参数沿用所选 TOML，不增加配置字段或环境变量来源。强制资源隔离属于工具的固定安全边界，不能用配置关闭；`db-upgrade` 和 `db-backup` 仍操作 TOML 指定的应用数据库。操作步骤与迁移脚本能力边界见 [README](../README.md#迁移生成审查与验证)。
+迁移开发命令 `db-revision` 与 `db-check` 也使用这个父目录，始终清理本次临时子目录，不保留迁移数据库。命令先校验完整 TOML，再从其全部字段派生临时设置，将数据、备份、日志和前端输出限定到独占目录，并关闭前端托管与自动清空；派生结果再次通过 `Settings` 校验。数据库连接参数沿用所选 TOML，不增加配置字段或环境变量来源。强制资源隔离属于工具的固定安全边界，不能用配置关闭；`db-upgrade` 和 `db-backup` 仍操作 TOML 指定的应用数据库。操作步骤与迁移脚本能力边界见[数据库指南](database.md#迁移生成审查与验证)。
 
 创建器保持标准库实现，只校验路径、源文件完整性和创建过程所需的关键字段；完整 Pydantic 字段、枚举和跨字段校验由生成项目的 `export-settings`、测试或首次启动执行。
 
@@ -84,7 +87,7 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 
 原生 telemetry 的采集关闭约束及 SDK 参数边界见下节，属于代码校验的固定能力范围。保留 SDK 并创建上下文不等于开启采集。
 
-SQLite 统一要求 3.51.3+，是针对 [WAL-reset 数据损坏修复](https://sqlite.org/wal.html#walresetbug)的数据完整性基线。官方虽为 3.44.6、3.50.7 提供回补，本脚手架暂不按旧分支或发行版补丁建立例外；DELETE 模式也使用相同基线。检查方式与 Python 升级方向见 README。
+SQLite 完整性基线及检查方式统一见[数据库指南](database.md#sqlite-版本要求)，没有通过应用配置绕过版本检查的开关。
 
 错误响应的空详情列表、非请求日志的链路标识占位符和加载/错误文案属于协议或界面语义，不是配置缺失后的兜底参数。
 
@@ -94,14 +97,14 @@ SQLite 统一要求 3.51.3+，是针对 [WAL-reset 数据损坏修复](https://s
 
 `app` 包首先清除当前进程中继承的全部 `OTEL_*` / `FASTAPI_OTEL_*` 键，不记录其值。这样第三方模块在首次导入时不会消费外部 propagator、context、SDK 默认限制或导出配置。应用工厂在 SDK 导入和 provider 构建前再次清理，再用 TOML 值填充以下固定白名单；对 shell 和其他进程没有影响，请求期间不修改环境。
 
-| SDK/FastAPI 环境入口 | TOML 字段 | 用途 |
-| --- | --- | --- |
-| `OTEL_SDK_DISABLED` | `telemetry.sdk_disabled` | 防止 SDK 被外部值变成 NoOp |
-| `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED` | `telemetry.internal_metrics_enabled` | 禁用 SDK 自身指标 |
-| `OTEL_PYTHON_CONTEXT` | `telemetry.context` | 明确支持的 contextvars 上下文实现 |
-| `OTEL_PROPAGATORS` | `telemetry.propagators` | 明确 W3C tracecontext；同时用公开 API 安装该传播器，覆盖已有模块缓存 |
-| `OTEL_INSTRUMENTATION_HTTP_KNOWN_METHODS` | `telemetry.known_methods` | FastAPI 原生 HTTP 方法归类，列表序列化为逗号分隔值 |
-| `FASTAPI_OTEL_AUTO_CONFIGURE` | `telemetry.auto_configure` | 禁止自动初始化导出组件；FastAPI 参数也显式设为同一配置值 |
+| SDK/FastAPI 环境入口                       | TOML 字段                            | 用途                                                                 |
+| ------------------------------------------ | ------------------------------------ | -------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`                        | `telemetry.sdk_disabled`             | 防止 SDK 被外部值变成 NoOp                                           |
+| `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED` | `telemetry.internal_metrics_enabled` | 禁用 SDK 自身指标                                                    |
+| `OTEL_PYTHON_CONTEXT`                      | `telemetry.context`                  | 明确支持的 contextvars 上下文实现                                    |
+| `OTEL_PROPAGATORS`                         | `telemetry.propagators`              | 明确 W3C tracecontext；同时用公开 API 安装该传播器，覆盖已有模块缓存 |
+| `OTEL_INSTRUMENTATION_HTTP_KNOWN_METHODS`  | `telemetry.known_methods`            | FastAPI 原生 HTTP 方法归类，列表序列化为逗号分隔值                   |
+| `FASTAPI_OTEL_AUTO_CONFIGURE`              | `telemetry.auto_configure`           | 禁止自动初始化导出组件；FastAPI 参数也显式设为同一配置值             |
 
 采样器、随机 ID 生成器和八项 SpanLimits 通过构造参数传入；Resource 的 `service.name`、`service.version` 分别取 `application.title`、`application.version`。Resource 直接构造，不调用自动探测环境的 `Resource.create()`。不设置全局 tracer/meter/logger provider；使用本地 tracer provider 和 NoOp meter provider，且不注册采集/导出 processor 或 exporter。应用 lifespan 管理 provider 关闭，OpenAPI CLI 在导出后显式关闭。
 
@@ -115,7 +118,7 @@ SQLite 统一要求 3.51.3+，是针对 [WAL-reset 数据损坏修复](https://s
 
 旧 `configs/app.json` 已移除，没有格式兼容回退。自定义旧 JSON 需要按主 TOML 的完整字段清单迁移；旧的本地私有 JSON 仍被 Git 忽略，防止误提交，但不会被加载。
 
-当前项目仅使用单 worker。修改数据库路径前先按 Ctrl+C 停止服务；服务与维护命令使用同一个配置文件。
+服务改为前台运行后，旧版 TOML 应删除 `[service]` 分组及 `logging.bootstrap_filename`；未知字段仍明确失败，不做隐式兼容或合并。启动不接受后台控制子命令，停止使用 Ctrl+C。修改数据库路径前先停止服务，服务与维护命令使用同一个配置文件。
 
 ## 验证
 

@@ -1,38 +1,38 @@
 # 小型全栈脚手架设计
 
-- 确认日期：2026-10-25
+- 初始范围确认：2026-10-25；后续演进见历史记录
 - 范围：本地、单用户、单机应用；V1 只有 Hello 示例
 - 状态：已实现；历次实测结果见 [实现与验证记录](history.md)
 
-本文描述当前架构和约束。[README](../README.md) 负责安装、运行和维护命令，[配置约定](configuration.md) 负责完整字段清单，历史变更不混入当前设计。
+本文描述当前架构和约束。[README](../README.md) 提供安装、运行和维护入口，[配置约定](configuration.md) 负责完整字段清单，历史变更不混入当前设计。已有项目如何逐步采用这些组织原则，见[架构对齐指南](project-alignment.md)。
 
 ## 定位与运行方式
 
 前后端放在同一个仓库，分别维护依赖和锁文件。FastAPI 提供 API，并托管 React SPA 的构建产物；依赖、数据库和前端产物准备好后，日常只运行一个 Python HTTP 服务。Node.js 只用于前端开发、检查和构建。
 
-前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh entrypoints/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。本项目不依赖 `agent-backend` 的源码。
+前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh entrypoints/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。
 
 ## 技术选型
 
-| 领域 | 选型与职责 |
-| --- | --- |
-| 后端工具链 | Python 3.14.7、uv；`pyproject.toml` 和 `uv.lock` 固定依赖 |
-| HTTP 与校验 | FastAPI、单 worker Uvicorn、Pydantic v2 |
-| 应用配置 | TOML、原生 tomllib、Pydantic 严格校验 |
-| 持久化 | SQLite、SQLAlchemy 2.0 AsyncEngine/AsyncSession、aiosqlite |
-| 结构升级 | Alembic，通过异步连接的 run_sync 桥接执行迁移 |
-| 日志 | Loguru，统一应用、请求和 Uvicorn 文件日志 |
-| 前端工具链 | Node.js 24.22.0 LTS、pnpm 9.12.2、Vite、TypeScript |
-| 页面与请求 | React、React Router、原生 fetch、TanStack Query |
-| UI | Ant Design、CSS Modules；局部状态就地管理 |
-| 接口类型 | openapi-typescript，从后端 OpenAPI 生成 TypeScript |
-| 质量检查 | Ruff、pytest、ESLint、Prettier、TypeScript、Playwright Chromium |
+| 领域        | 选型与职责                                                      |
+| ----------- | --------------------------------------------------------------- |
+| 后端工具链  | Python、uv；`pyproject.toml` 和 `uv.lock` 固定依赖              |
+| HTTP 与校验 | FastAPI、单 worker Uvicorn、Pydantic v2                         |
+| 应用配置    | TOML、原生 tomllib、Pydantic 严格校验                           |
+| 持久化      | SQLite、SQLAlchemy 2.0 AsyncEngine/AsyncSession、aiosqlite      |
+| 结构升级    | Alembic，通过异步连接的 run_sync 桥接执行迁移                   |
+| 日志        | Loguru，统一应用、请求和 Uvicorn 文件日志                       |
+| 前端工具链  | Node.js、pnpm、Vite、TypeScript                                 |
+| 页面与请求  | React、React Router、原生 fetch、TanStack Query                 |
+| UI          | Ant Design、CSS Modules；局部状态就地管理                       |
+| 接口类型    | openapi-typescript，从后端 OpenAPI 生成 TypeScript              |
+| 质量检查    | Ruff、pytest、ESLint、Prettier、TypeScript、Playwright Chromium |
 
-具体库版本以两份锁文件为准，不根据文档描述自动升级依赖。解释器定位分别见 `backend/.python-version` 和根目录 `.node-version`。
+具体库版本以两份锁文件为准，不根据文档描述自动升级依赖。解释器定位分别见 `backend/.python-version` 和根目录 `.node-version`，pnpm 版本见 `frontend/package.json`。
 
 ## 目录结构
 
-以下省略依赖和缓存目录，`.data/`、`logs/` 与 `dist/` 是运行产物。
+以下省略依赖、缓存与子目录 AGENTS；指令入口见[根规则](../AGENTS.md#范围与指令入口)。`.data/`、`logs/` 与 `dist/` 是运行产物。
 
 ```text
 fullstack-starter/
@@ -50,6 +50,9 @@ fullstack-starter/
 ├── docs/
 │   ├── design.md                     # 当前架构与 V1 范围
 │   ├── configuration.md              # 必填配置及固定契约边界
+│   ├── project-alignment.md          # 已有项目的差异分析与渐进对齐
+│   ├── project-creation.md           # 独立项目创建流程与复制边界
+│   ├── database.md                   # 数据库备份、恢复与迁移操作
 │   └── history.md                    # 实现与验证记录
 ├── backend/
 │   ├── pyproject.toml / uv.lock
@@ -117,13 +120,13 @@ fullstack-starter/
 
 ## 后端职责与数据库
 
-| 层 | 职责与边界 |
-| --- | --- |
-| `routers/` | HTTP 参数、依赖声明、调用 Service、响应声明；不执行数据库写入 |
-| `services/` | 业务类负责业务规则、查询和写入事务，成功返回前提交、异常或取消时回滚；同文件工厂负责依赖组装 |
-| `maintenance/` | CLI 专属维护基础设施，例如数据库快照；不承载 HTTP 业务 |
-| `models/` | 持久化结构、索引与约束；不依赖 Router 或 Service |
-| `schemas/` | 请求、响应和校验；与 ORM 模型分离 |
+| 层             | 职责与边界                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| `routers/`     | HTTP 参数、依赖声明、调用 Service、响应声明；不执行数据库写入                                |
+| `services/`    | 业务类负责业务规则、查询和写入事务，成功返回前提交、异常或取消时回滚；同文件工厂负责依赖组装 |
+| `maintenance/` | CLI 专属维护基础设施，例如数据库快照；不承载 HTTP 业务                                       |
+| `models/`      | 持久化结构、索引与约束；不依赖 Router 或 Service                                             |
+| `schemas/`     | 请求、响应和校验；与 ORM 模型分离                                                            |
 
 调用关系为 Router → Service → SQLAlchemy → SQLite。服务类通过构造参数接收业务依赖，类内不处理 FastAPI 请求或依赖解析，也不构造 Pydantic I/O Schema 或基础设施。
 
@@ -135,32 +138,28 @@ fullstack-starter/
 
 SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用外键、有限锁等待和显式 BEGIN；日志模式、持久化级别和池容量来自配置。WAL 保留单写入者约束，异步驱动不会将 SQLite 变成多写入者数据库。
 
-3.51.3 是针对 WAL-reset 数据损坏修复的统一基线，并非 WAL 功能的最低支持版本。索引/唯一约束按全部列自动命名；CHECK 不强制套用名称模板，迁移管理所需的 CHECK 名称由模型显式给出。
+SQLite 完整性基线的依据见[数据库指南](database.md#sqlite-版本要求)；模型索引与约束命名见[模型约束约定](database.md#模型约束与命名)。
 
 初始迁移仅建立 Alembic 版本记录。建库与升级必须显式执行维护命令，正常启动不运行迁移或 `create_all()`。Alembic 的同步命令入口管理事件循环，通过 `AsyncConnection.run_sync()` 执行 DDL 桥接，不另建同步运行时引擎。已有数据的结构变更必须审查迁移，必要时使用 SQLite batch migration。
 
-迁移代码集中在 `backend/migrations/`：`operations.py` 统一提供 Alembic 配置、head 查询和带停服保护的显式升级；`env.py` 与 `versions/` 保存执行环境和历史；`development.py` 的 `DatabaseMigrations` 负责生成和检查，同文件工厂供 CLI 组装。`app/database.py` 管理运行时连接、会话和启动版本检查，通过 `operations.py` 查询代码期望的 head。`operations.py` 只依赖配置与服务操作锁，不依赖引擎模块；`env.py` 复用引擎构造，避免循环依赖。生成与检查都先要求一个 head，在独占临时 SQLite 上重放已有迁移；生成比较 `Base.metadata` 后输出候选文件，没有结构差异时跳过空文件，手写模板需显式选择。检查重放至 head 后使用 Alembic 检测遗漏的模型变更，失败返回非零退出码。
+迁移代码集中在 `backend/migrations/`：`operations.py` 管理 Alembic 配置、head 查询和带停服保护的升级；`env.py` 复用引擎构造并执行 DDL；`versions/` 保存历史；`development.py` 负责隔离临时库上的重放、生成与检查。运行时 `app/database.py` 通过 operations 查询期望版本，operations 不反向依赖引擎模块，避免循环依赖。开发命令不连接日常库，应用数据库升级仍需显式执行。
 
-这条开发链从已完整校验的 TOML 派生临时设置，再次执行同一 Settings 校验，强制隔离数据、备份、日志和前端输出，不读写日常数据库，不使用日常服务锁；临时资源在成功或失败后清理。迁移代码仍是可信 Python，隔离不约束脚本自行访问外部资源。空库检查只覆盖重放及 Alembic 可检测的差异，旧数据保留、回填、约束和降级能力由对应 revision 的临时库回归测试证明。已交付并执行过的迁移保持不变，修正新增 revision。完整生成、审查与验证步骤见 [README](../README.md#迁移生成审查与验证)。
+生成、审查、旧数据回归、迁移脚本能力及恢复边界统一见[数据库指南](database.md#迁移生成审查与验证)。测试中真实历史重放与合成机制验证分开，baseline 的空表断言只针对 `0001_baseline`。
 
 应用 lifespan 与离线升级持有同一个数据库文件锁，防止相同数据库的重复服务或迁移并发；启动时先检查数据库存在，关闭连接后释放锁。维护前按 Ctrl+C 停止服务。锁路径从实际数据库路径派生，例如 `.data/app.sqlite3.lock`，文件可保留，运行期间不删除；该机制只约束使用它的本机进程，其他数据库使用者也必须先停止。
 
-迁移测试区分真实历史和合成机制：真实历史重放至 head 并比较当前模型，合成测试则自行建立独立 revision 与 metadata，覆盖测试基线和已有后续版本两个场景，不复制应用业务历史。真实 baseline 的空表断言只迁移至 `0001_baseline`；模型索引测试使用空白临时库，备份版本断言随代码期望的 head 更新。增加正常业务迁移不应改变这些测试前提。
-
-备份实现在 `maintenance/backup.py`，由 `DatabaseBackup` 类接收配置依赖，CLI 负责参数、对象组装和事件循环。aiosqlite Backup API 创建独占命名的快照，文件名包含 UTC 时间戳和完整 UUIDv7 十六进制值；校验完整性和迁移版本，不覆盖已有文件。取消时等待已提交的复制结束、关闭连接并清理未返回的结果，继续传播取消。恢复按 README 停服、验证副本、切换数据路径，不提供网页恢复入口。
-
-需要升级前快照时，在新增或引入 revision 前使用版本匹配的代码完成备份；空库跳过。生成候选迁移后才用新代码备份旧 revision 会被版本检查拒绝，开发流程因此将备份前置，保留原有校验边界。
+`maintenance/backup.py` 的 `DatabaseBackup` 接收配置，异步创建并校验独占命名的快照；CLI 负责参数、组装和事件循环。备份对象不管理服务状态，停服、版本匹配与恢复副本的操作步骤见[数据库指南](database.md#数据库与备份)。
 
 ## 前端与接口契约
 
 TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取消和错误解析；`useWelcome` 组合 Hello 与健康检查，页面和连接组件呈现加载、失败、成功及重试状态。保持现有 Hello 视觉设计，支持键盘操作和窄屏使用，不增加全局业务状态库。
 
-| Method / 路径 | 契约 |
-| --- | --- |
-| `GET /api/v1/hello` | 固定返回 `{"message": "Hello World"}` |
-| `GET /api/health` | 检查服务和真实 SQLite 连接 |
-| `/`、`/welcome` | Hello 欢迎页，可直接访问和刷新 |
-| `/docs`、`/openapi.json` | 文档与 Schema；开关和路径来自配置 |
+| Method / 路径            | 契约                                  |
+| ------------------------ | ------------------------------------- |
+| `GET /api/v1/hello`      | 固定返回 `{"message": "Hello World"}` |
+| `GET /api/health`        | 检查服务和真实 SQLite 连接            |
+| `/`、`/welcome`          | Hello 欢迎页，可直接访问和刷新        |
+| `/docs`、`/openapi.json` | 文档与 Schema；开关和路径来自配置     |
 
 成功响应直接返回 Schema；错误统一为 `code`、`message`、`details`、`trace_id`。未预期的内部细节进入日志，不返回给浏览器。未知 API 和缺失静态资源返回真实 404；仅页面导航可回退到 SPA HTML。查询按配置有限重试，写请求重试次数必须显式配置为 0。
 
@@ -172,15 +171,13 @@ FastAPI 原生 telemetry 使用应用显式创建的本地 SDK `TracerProvider` 
 
 500 处理器从请求状态恢复日志上下文和保存的响应头，保证中间件退出后仍关联本次服务端 span。同一链路的请求可以共享 trace ID；不再提供 `X-Trace-ID`、`request_id` 或 `X-Request-ID`。错误响应继续保留 no-store 和 nosniff，HTTP 异常仅透传 Allow、WWW-Authenticate、Retry-After 协议头。前端错误对象继续从错误体读取 `trace_id`，不依赖自定义响应头。
 
-`app/__init__.py` 在第三方模块导入前丢弃继承的遥测环境值；`telemetry/environment.py` 在应用构建阶段将 TOML 中的必要项写入固定白名单，`telemetry/provider.py` 通过公开参数传入采样器、ID 生成器、Resource 和全部 SpanLimits，并显式安装 W3C tracecontext propagator。直接构造 Resource 以避免自动环境探测；应用不替换全局 tracer/meter/logger provider。进程级环境和 propagator 由该单应用入口管理，不支持在同一进程热切换上下文实现或传播协议。完整映射见 [配置约定](configuration.md#遥测上下文与环境隔离)。
-
-provider 不注册进程退出钩子，由 lifespan 在正常退出和启动失败时关闭；OpenAPI CLI 在无 lifespan 的导出路径显式关闭 provider。导入应用和导出 OpenAPI 不访问数据库，也不要求已有前端构建产物。
+`app/telemetry/` 负责导入前环境隔离、本地 provider 装配和全局传播器安装；不替换全局 tracer/meter/logger provider。lifespan 在正常退出及启动失败时关闭 provider，OpenAPI CLI 在导出后显式关闭。具体开关、环境白名单和进程边界统一见[配置约定](configuration.md#遥测上下文与环境隔离)。
 
 接口类型链路为 Pydantic Schema → CLI 导出 OpenAPI → openapi-typescript → `api.generated.d.ts`。生成文件由生成器维护，Prettier 忽略它；检查模式发现过期类型时失败而不改写文件。编译期类型不能代替服务端运行时校验。后续业务的时间按 UTC 保存和输出，API 使用带时区的 ISO 8601。
 
 ## 配置、访问与进程边界
 
-全部 100 个叶子配置项及其分组均必填，唯一入口为 `configs/app.toml`。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
+全部配置字段及分组均必填，固定引导入口为 `configs/app.toml`，CLI 可通过 `--config` 显式选择另一份完整 TOML。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
 
 相对数据、备份、日志和前端路径一律相对于项目根目录。构建工具复用 Python 校验器，只把 `client` 和应用标题/版本注入浏览器，私有路径和完整服务配置不打包。后端参数改动需重启，前端公开参数改动需重新构建。工具自身的 PATH、缓存位置和浏览器安装目录不作为应用配置来源。
 
@@ -192,14 +189,14 @@ Loguru 将应用、链路标识和 Uvicorn 日志通过 `enqueue=True` 交给后
 
 ## V1 范围与验收
 
-| V1 内容 | 验收行为 |
-| --- | --- |
-| Hello 示例 | 唯一示例页面与 API，展示真实连通状态、加载、错误与重试 |
-| 后端基础 | 应用工厂、严格配置、健康检查、统一错误、链路标识与日志 |
-| 数据基础 | AsyncSession、显式事务、版本检查、初始迁移和手动备份 |
-| 运行管理 | 单 FastAPI 服务、前端托管、可选 Vite、sh 前台启动与 Uvicorn 优雅关闭 |
-| 接口协作 | 无副作用的 OpenAPI 导出、生成类型和一致性检查 |
-| 工程质量 | 格式、lint、类型、后端与页面测试、运行和恢复说明 |
+| V1 内容    | 验收行为                                                             |
+| ---------- | -------------------------------------------------------------------- |
+| Hello 示例 | 唯一示例页面与 API，展示真实连通状态、加载、错误与重试               |
+| 后端基础   | 应用工厂、严格配置、健康检查、统一错误、链路标识与日志               |
+| 数据基础   | AsyncSession、显式事务、版本检查、初始迁移和手动备份                 |
+| 运行管理   | 单 FastAPI 服务、前端托管、可选 Vite、sh 前台启动与 Uvicorn 优雅关闭 |
+| 接口协作   | 不连接数据库的 OpenAPI 导出、生成类型和一致性检查                    |
+| 工程质量   | 格式、lint、类型、后端与页面测试、运行和恢复说明                     |
 
 V1 不包含 CRUD 应用、业务表、登录权限、任务队列、Agent/RAG、对象存储、多租户、Docker 或 CI 模板，后续按实际任务增加。
 
@@ -207,11 +204,9 @@ V1 不包含 CRUD 应用、业务表、登录权限、任务队列、Agent/RAG�
 
 E2E 的构建输出也位于本次临时目录，运行器强制替换入口配置中的输出位置并关闭目录自动清空，不重建日常 frontend/dist。独立 Playwright 配置会提示使用统一 E2E 入口。
 
-安装、构建、迁移、启停、备份、类型与测试命令统一维护在 [README](../README.md)。测试数量和实测环境写入 [实现与验证记录](history.md)，不得由设计状态推断尚未执行的验证。
+安装、构建、启停、类型与测试命令以 [README](../README.md) 为入口；[数据库指南](database.md)保存维护与迁移的详细步骤，[项目创建指南](project-creation.md)保存复制与初始化流程。测试数量和实测环境写入 [实现与验证记录](history.md)，不得由设计状态推断尚未执行的验证。
 
-项目创建通过 `scripts/create-project.sh` 指定项目名、最终目标目录和后端端口，可另选 Vite 端口。创建工具排除运行与私有产物，调整项目元信息、配置和文档，仅修改 uv 锁文件中的本地项目名称并离线校验，保留第三方依赖记录。目标必须是脚手架之外的新目录，失败时清理本次创建的目标；依赖安装、建库、构建、Git 初始化和启动按 README 独立执行。示例测试按配置标题和端口断言，生成项目无需手动改测试文案。
-
-复制前按共用路径策略拒绝运行路径与源码、遗留运行目录或依赖目录重叠，并检查创建所需的关键字段；复制后按源文件树校验 API、路由、服务、迁移、CLI、sh、前端和元信息入口，防止排除规则产生缺少源码的“成功”副本。完整的 Pydantic 配置语义仍由生成项目首次导出、测试或启动校验。
+项目创建由 `scripts/create-project.sh` 调用标准库实现，复用路径策略并检查副本完整性；仅调整项目元信息和本地锁条目，保留第三方依赖。参数、复制排除、配置校验能力及后续准备统一见[项目创建指南](project-creation.md)。
 
 ## 官方资料
 
