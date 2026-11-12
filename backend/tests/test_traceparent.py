@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from loguru import logger
 from opentelemetry import trace
 
+from app.application import create_app
 from app.config import Settings
-from app.main import create_app
 from tests.helpers import response_trace_context, response_trace_id
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"

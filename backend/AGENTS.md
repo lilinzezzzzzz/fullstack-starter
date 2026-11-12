@@ -7,14 +7,15 @@
 - `app/routers/` 负责 HTTP 参数、依赖声明、调用与响应映射，不执行数据库写入；`app/services/` 负责业务规则、查询与写事务；`app/models/` 定义持久化结构；`app/schemas/` 定义 Pydantic I/O Schema。
 - Service 使用类，通过构造参数注入依赖。业务类不处理 FastAPI Request/Depends、不构造 I/O Schema 或基础设施；各自的模块级 `new_*_service` 工厂与类同文件，可用 Request/Depends 组装依赖。Router 声明 Depends，CLI 显式组装。不要把模块允许使用 FastAPI 误解为业务类允许依赖框架。
 - 只有无状态且不持有请求、Session 或可变配置的服务才可跨请求缓存。复杂查询出现实际复用后再提取 DAO，不预设通用 CRUD、Service 或 Repository 基类。
-- `app/maintenance/` 放 CLI 专属维护基础设施；`app/cli.py` 处理参数和事件循环边界；`tools/service_control.py` 装配前台 Uvicorn，由 `entrypoints/service.sh` 调用。业务模块不反向依赖工程工具。
+- `app/maintenance/` 放 CLI 专属维护基础设施；`entrypoints/cli.py` 处理维护参数和事件循环边界；`entrypoints/` 集中放置后端可执行入口，`service.sh` 定位项目与 uv 环境并调用同目录的 `service.py` 装配前台 Uvicorn。业务模块不反向依赖可执行入口或工程工具。
 - `app/utils/` 的路径策略和数据库锁保持标准库依赖与轻量包入口，由调用方传参，不反向依赖 Settings、Service 或工具；项目创建器需要在无应用依赖时加载路径策略。
+- `app/infra/` 提供数据库、日志、静态托管和通用 HTTP 适配，可依赖 Settings、I/O Schema 与框架，但不反向依赖 Router、业务 Service 或应用工厂。`middleware.py` 提供 ASGI 请求处理，`errors.py` 提供标准错误响应和异常处理器，应用工厂保持原注册顺序并使用 `errors.register_error_handlers(application)`。`frontend.py` 提供产物检查与文件服务，挂载及 API 优先顺序由应用工厂管理。包入口保持轻量，不自动导入实现、注册组件或创建资源；应用生命周期和可执行入口负责装配、关闭。
 
 ## 数据库与生命周期
 
 - 使用 SQLAlchemy 2.0 AsyncEngine、async_sessionmaker 和 aiosqlite；每个请求或任务独占 AsyncSession，禁止并发共享。数据库 I/O 使用 async/await，避免关系懒加载造成隐式 I/O；纯计算可保留同步函数。
-- Service 使用 `async with session.begin()` 管理写事务，成功提交，异常与取消回滚；保持连接外键、显式 BEGIN、有限锁等待和参数隐藏。SQLite 最低版本由 `app/database.py` 的完整性基线约束，检查 Python 实际链接的库。
-- `create_app(settings)` 只装配应用。lifespan 初始化运行资源、检查数据库版本与前端产物，关闭时 await 引擎释放。`app.state` 是框架装配与依赖适配边界，业务类通过注入获取依赖。
+- Service 使用 `async with session.begin()` 管理写事务，成功提交，异常与取消回滚；保持连接外键、显式 BEGIN、有限锁等待和参数隐藏。SQLite 最低版本由 `app/infra/database.py` 的完整性基线约束，检查 Python 实际链接的库。
+- `app/application.py` 的 `create_app(settings)` 显式接收配置，构造 FastAPI 与本地 provider，再按顺序装配中间件、异常处理、API 路由、OpenAPI 与前端；具体 HTTP 处理保留在 `routers/`，API 注册先于 SPA 挂载。同文件的模块级 lifespan 从当前应用状态读取依赖，管理数据库版本/前端检查与运行资源，保持先 await 引擎释放、再解锁、再关闭 provider 和等待日志的顺序。`app.state` 是框架装配与依赖适配边界，业务类通过注入获取依赖；配置、数据库与 provider 绑定当前应用，Loguru 沿用现有进程级配置。
 - 正常连接不静默创建缺失数据库；建库与升级走显式维护 CLI。运行服务和升级持有同一数据库文件锁，连接关闭后再释放。
 - 备份使用 aiosqlite Backup API、独占新文件、完整性与迁移版本校验，不覆盖已有快照。取消时等待已提交的复制结束，关闭连接、清理未返回快照并继续传播取消；不能只复制运行中的 SQLite 主文件。
 

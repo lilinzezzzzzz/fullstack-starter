@@ -63,7 +63,7 @@ try {
       resolve(projectRoot, 'backend'),
       'python',
       '-m',
-      'app.cli',
+      'entrypoints.cli',
       '--config',
       configFile,
       'export-openapi',

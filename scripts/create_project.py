@@ -227,6 +227,17 @@ ROOT_PROJECT_FILES = (
     ".node-version",
     "configs/app.toml",
     "backend/pyproject.toml",
+    "backend/app/application.py",
+    "backend/app/infra/__init__.py",
+    "backend/app/infra/database.py",
+    "backend/app/infra/errors.py",
+    "backend/app/infra/frontend.py",
+    "backend/app/infra/logging_setup.py",
+    "backend/app/infra/middleware.py",
+    "backend/entrypoints/__init__.py",
+    "backend/entrypoints/cli.py",
+    "backend/entrypoints/service.py",
+    "backend/entrypoints/service.sh",
     "backend/uv.lock",
     "backend/alembic.ini",
     "backend/.python-version",
@@ -244,11 +255,10 @@ ROOT_PROJECT_FILES = (
 SOURCE_TREE_ROOTS = (
     "backend/app",
     "backend/migrations",
-    "backend/tools",
+    "backend/entrypoints",
     "backend/tests",
     "configs",
     "docs",
-    "entrypoints",
     "scripts",
     "frontend/src",
     "frontend/scripts",
@@ -477,9 +487,9 @@ def main() -> None:
     print("  pnpm --dir frontend install --frozen-lockfile")
     print("  pnpm --dir frontend api:types")
     print("  pnpm --dir frontend build")
-    print("  uv run --directory backend python -m app.cli db-check")
-    print("  uv run --directory backend python -m app.cli db-upgrade")
-    print("  sh entrypoints/service.sh")
+    print("  uv run --directory backend python -m entrypoints.cli db-check")
+    print("  uv run --directory backend python -m entrypoints.cli db-upgrade")
+    print("  sh backend/entrypoints/service.sh")
 
 
 if __name__ == "__main__":

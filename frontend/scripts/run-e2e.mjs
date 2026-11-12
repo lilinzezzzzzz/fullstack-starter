@@ -131,7 +131,7 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
     'backend',
     'python',
     '-m',
-    'app.cli',
+    'entrypoints.cli',
     '--config',
     configFile,
     'db-upgrade',
@@ -147,7 +147,7 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
   );
   const generatedConfig = join(workDir, 'playwright.config.mjs');
   const testFactory = pathToFileURL(join(frontendRoot, 'scripts/playwright-settings.mjs')).href;
-  const serviceCommand = `sh entrypoints/service.sh --config '${configFile.replaceAll("'", "'\\''")}'`;
+  const serviceCommand = `sh backend/entrypoints/service.sh --config '${configFile.replaceAll("'", "'\\''")}'`;
   await writeFile(
     generatedConfig,
     `

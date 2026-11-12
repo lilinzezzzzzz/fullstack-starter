@@ -43,6 +43,18 @@ class ApplicationSettings(ConfigSection):
     redoc_path: str = Field(pattern=r"^/")
     openapi_path: str = Field(pattern=r"^/")
 
+    @property
+    def docs_url(self) -> str | None:
+        return self.docs_path if self.docs_enabled else None
+
+    @property
+    def redoc_url(self) -> str | None:
+        return self.redoc_path if self.redoc_enabled else None
+
+    @property
+    def openapi_url(self) -> str | None:
+        return self.openapi_path if self.openapi_enabled else None
+
 
 class ServerSettings(ConfigSection):
     host: str

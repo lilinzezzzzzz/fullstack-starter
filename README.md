@@ -57,10 +57,10 @@ sh scripts/create-project.sh \
 ```bash
 uv sync --directory backend --frozen
 pnpm --dir frontend install --frozen-lockfile
-uv run --directory backend python -m app.cli db-check
-uv run --directory backend python -m app.cli db-upgrade
+uv run --directory backend python -m entrypoints.cli db-check
+uv run --directory backend python -m entrypoints.cli db-upgrade
 pnpm --dir frontend build
-sh entrypoints/service.sh
+sh backend/entrypoints/service.sh
 ```
 
 随附配置访问 [http://127.0.0.1:18001/](http://127.0.0.1:18001/)。启动时检查数据库版本与前端产物，不自动迁移、安装依赖或构建。
@@ -74,14 +74,16 @@ sh entrypoints/service.sh
 
 ## 服务控制
 
-`sh entrypoints/service.sh` 前台运行，Ctrl+C 停止，重新执行即可再次启动。信号与优雅关闭由 Uvicorn 处理，不提供后台控制子命令或 PID 管理，端口占用时只报错。
+`sh backend/entrypoints/service.sh` 前台运行，Ctrl+C 停止，重新执行即可再次启动。信号与优雅关闭由 Uvicorn 处理，不提供后台控制子命令或 PID 管理，端口占用时只报错。
+
+Shell 入口调用 `backend/entrypoints/service.py`（`python -m entrypoints.service`）装配并启动后端，应用工厂与资源生命周期仍由 `backend/app/application.py` 管理。
 
 服务与维护命令必须使用同一配置；先准备包含全部字段的 `configs/app.local.toml`，再显式选择。CLI 的 `--config` 放在子命令前：
 
 ```bash
-sh entrypoints/service.sh --config configs/app.local.toml
+sh backend/entrypoints/service.sh --config configs/app.local.toml
 # 维护前先在服务终端按 Ctrl+C 停止；此处只检查临时库
-uv run --directory backend python -m app.cli --config configs/app.local.toml db-check
+uv run --directory backend python -m entrypoints.cli --config configs/app.local.toml db-check
 ```
 
 运行服务与数据库升级共用数据库旁的文件锁，运行期间不要删除锁文件。随附数据库为 `.data/app.sqlite3`，日志为 `logs/app.log`；Loguru 队列在退出时等待写完。自定义运行路径后检查 `.gitignore`，避免提交数据、备份、日志或私有配置。
@@ -92,7 +94,7 @@ uv run --directory backend python -m app.cli --config configs/app.local.toml db-
 
 ```bash
 # 终端一
-sh entrypoints/service.sh
+sh backend/entrypoints/service.sh
 # 终端二
 pnpm --dir frontend dev
 ```
@@ -104,7 +106,7 @@ pnpm --dir frontend dev
 升级、恢复或切换日常数据库前先停止服务，并确认其他数据库使用者也已停止。已有库需要升级前快照时，在新增或引入 revision **之前**，使用与旧库版本匹配的代码执行：
 
 ```bash
-uv run --directory backend python -m app.cli db-backup
+uv run --directory backend python -m entrypoints.cli db-backup
 ```
 
 备份写入配置中的 `backup_directory`，校验后打印路径，不覆盖已有文件。不要只复制运行中的 SQLite 主文件，也不要删除活动的 WAL/SHM。完整备份、恢复及停服升级流程见[数据库指南](docs/database.md)。
@@ -114,8 +116,8 @@ uv run --directory backend python -m app.cli db-backup
 模型变更与 Alembic revision 一同维护，已交付并执行过的迁移保持不变。候选迁移与临时库检查使用：
 
 ```bash
-uv run --directory backend python -m app.cli db-revision -m "describe schema change"
-uv run --directory backend python -m app.cli db-check
+uv run --directory backend python -m entrypoints.cli db-revision -m "describe schema change"
+uv run --directory backend python -m entrypoints.cli db-check
 ```
 
 两者使用隔离临时库；`db-check` 不证明旧数据转换正确，也不检查日常库漂移。生成、审查、旧数据回归和显式应用的完整顺序见[迁移流程](docs/database.md#迁移生成审查与验证)。
@@ -129,7 +131,7 @@ pnpm --dir frontend api:types
 pnpm --dir frontend api:types:check
 uv run --directory backend ruff check --config pyproject.toml . ../scripts/create_project.py
 uv run --directory backend ruff format --check --config pyproject.toml . ../scripts/create_project.py
-uv run --directory backend python -m app.cli db-check
+uv run --directory backend python -m entrypoints.cli db-check
 uv run --directory backend pytest
 pnpm --dir frontend format:check
 pnpm --dir frontend lint

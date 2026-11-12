@@ -27,6 +27,8 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 具体取值、单位与注释以主 TOML 文件为准。提供在文件里的数值是操作者选择的值，不是缺失时的默认值。
 
+`ApplicationSettings` 提供只读派生属性 `docs_url`、`redoc_url`、`openapi_url`，将各自必填的启用开关和路径转换为有效路径或 `None`，应用工厂直接读取。它们不是新增 TOML 字段，不进入配置导出；关闭功能仍需提供原始 `*_path`，供前端保留这些路径并返回真实 404。OpenAPI 与交互文档开关的关联校验保持不变，不允许关闭 OpenAPI 时启用 Swagger 或 ReDoc。
+
 - `logging.retention_days = 0` 显式表示保留所有轮转日志。
 - `server.concurrency_limit = 0` 显式表示不设置并发上限。
 - `testing.action_timeout_seconds = 0` 显式关闭单动作超时。
@@ -43,7 +45,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 - 数据、备份与日志是私有目录，不得与受保护源码、项目根的依赖/工具缓存目录或公开输出双向重叠。默认 `.data/`、`.data/backups/` 与 `logs/` 是允许的私有路径，私有目录之间不统一禁止包含关系。
 - 公开输出额外避开根目录遗留的 `data/`、`.data/`、`logs/`、`.run/`，以及 `.venv/`、`node_modules/`、`.pytest_cache/`、`.ruff_cache/`。`frontend/` 内只允许 `frontend/dist/` 子树作为输出位置。
-- 源码保护覆盖 `backend/`、`frontend/`、`entrypoints/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
+- 源码保护覆盖 `backend/`（包含 Shell 与 Python 入口）、`frontend/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
 - 自动清空只允许实际的 `frontend/dist`，其子目录或指向外部的符号链接不能启用自动清空。其他合法输出位置需显式设置 `frontend_clean_output = false`。
 
 数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。

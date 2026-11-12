@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
+from app.application import create_app
 from app.config import PROJECT_ROOT, load_settings
-from app.database import create_database_engine
-from app.main import create_app
+from app.infra.database import create_database_engine
 from app.utils.path_safety import validate_runtime_paths
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, save_config, write_config
@@ -87,11 +87,30 @@ def test_zero_and_false_are_explicit_values_not_missing_values(tmp_path: Path) -
     assert settings.logging.request_logging is False
 
 
-def test_documentation_and_metadata_are_driven_by_file(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("docs_enabled", "redoc_enabled", "openapi_enabled"),
+    [
+        (True, True, True),
+        (True, False, True),
+        (False, True, True),
+        (False, False, True),
+        (False, False, False),
+    ],
+)
+def test_documentation_and_metadata_are_driven_by_file(
+    tmp_path: Path, docs_enabled: bool, redoc_enabled: bool, openapi_enabled: bool
+) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
     data["application"].update(
-        title="configured-project", version="2.3.4", docs_enabled=False, redoc_enabled=False
+        title="configured-project",
+        version="2.3.4",
+        docs_enabled=docs_enabled,
+        redoc_enabled=redoc_enabled,
+        openapi_enabled=openapi_enabled,
+        docs_path="/reference/swagger",
+        redoc_path="/reference/redoc",
+        openapi_path="/spec/openapi.json",
     )
     data["serve_frontend"] = True
     frontend = tmp_path / "dist"
@@ -99,15 +118,23 @@ def test_documentation_and_metadata_are_driven_by_file(tmp_path: Path) -> None:
     (frontend / "index.html").write_text("<html><body>Hello</body></html>")
     save_config(path, data)
     settings = load_settings(path)
+    assert settings.application.model_dump() == data["application"]
     upgrade_database(settings)
     app = create_app(settings)
     assert app.openapi()["info"] == {"title": "configured-project", "version": "2.3.4"}
     schema = app.openapi()["components"]["schemas"]["ClientSettings"]
     assert set(schema["required"]) == set(schema["properties"])
     with TestClient(app, base_url="http://127.0.0.1") as client:
-        assert client.get("/docs").status_code == 404
-        assert client.get("/redoc").status_code == 404
-        assert client.get("/docs", headers={"accept": "text/html"}).status_code == 404
+        for url, enabled in (
+            (settings.application.docs_path, docs_enabled),
+            (settings.application.redoc_path, redoc_enabled),
+            (settings.application.openapi_path, openapi_enabled),
+        ):
+            response = client.get(url, headers={"accept": "text/html"})
+            assert response.status_code == (200 if enabled else 404)
+            if not enabled:
+                assert response.json()["code"] == "NOT_FOUND"
+        assert client.get("/", headers={"accept": "text/html"}).status_code == 200
         assert client.get("/api/v1/hello").json() == {"message": "Hello World"}
 
 
@@ -156,7 +183,16 @@ def test_public_output_cannot_contain_private_storage(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "destination",
-    ["backend/app", "entrypoints", "scripts", "docs", ".git", "frontend/public", ".", "README.md"],
+    [
+        "backend/app",
+        "backend/entrypoints",
+        "scripts",
+        "docs",
+        ".git",
+        "frontend/public",
+        ".",
+        "README.md",
+    ],
 )
 def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -> None:
     path = write_config(tmp_path, frontend_dir=destination)
@@ -236,7 +272,8 @@ def test_clean_output_rejects_symlinked_default_tree(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "destination", ["Backend/app", "ENTRYPOINTS", "SCRIPTS", "DOCS", ".GIT", "LOGS", ".DATA"]
+    "destination",
+    ["Backend/app", "BACKEND/ENTRYPOINTS", "SCRIPTS", "DOCS", ".GIT", "LOGS", ".DATA"],
 )
 def test_case_only_source_and_runtime_aliases_are_rejected(
     tmp_path: Path, destination: str

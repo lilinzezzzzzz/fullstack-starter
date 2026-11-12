@@ -23,12 +23,12 @@ uv run --directory backend python -c 'import sqlite3; print(sqlite3.sqlite_versi
 ```bash
 # 已有库按需备份：在新增 revision 或切换代码之前执行；新建空库跳过
 # 在服务终端按 Ctrl+C 停止
-uv run --directory backend python -m app.cli db-backup
+uv run --directory backend python -m entrypoints.cli db-backup
 
 # 完成迁移生成、审查与验证后，确认所有数据库使用者均已停止
 # 在服务终端按 Ctrl+C 停止
-uv run --directory backend python -m app.cli db-upgrade
-sh entrypoints/service.sh
+uv run --directory backend python -m entrypoints.cli db-upgrade
+sh backend/entrypoints/service.sh
 ```
 
 维护命令与服务必须使用同一个配置文件。备份通过 SQLite Backup API 创建一致性快照，校验完整性与版本后打印路径，保存到 `backup_directory` 指定的位置，不覆盖旧文件。`db-backup` 要求库版本与所用代码一致；生成新 revision 后，不能用新代码备份仍停留在旧 revision 的库，应使用此前与库版本匹配的代码创建快照。
@@ -50,7 +50,7 @@ sh entrypoints/service.sh
 | `db-check`                      | 在独占临时库执行 `base → head`，再检查模型是否存在遗漏的迁移；不生成 revision，失败时返回非零退出码      |
 | `db-upgrade`                    | 显式升级所选 TOML 对应的应用数据库，沿用停服和操作锁要求                                                 |
 
-`db-revision` 与 `db-check` 从完整 TOML 读取并校验设置，在 `testing.temporary_directory` 下创建独占子目录，强制隔离数据、备份、日志和前端输出路径，不连接日常数据库或操作日常服务。临时子目录成功或失败后均清理；已有迁移脚本必须只处理数据库，不调用外部服务或自行访问其他运行路径。这些命令运行可信 Python 迁移代码，不提供脚本沙箱。自定义配置使用 `uv run --directory backend python -m app.cli --config /absolute/path/app.local.toml db-check`，`--config` 放在子命令前。
+`db-revision` 与 `db-check` 从完整 TOML 读取并校验设置，在 `testing.temporary_directory` 下创建独占子目录，强制隔离数据、备份、日志和前端输出路径，不连接日常数据库或操作日常服务。临时子目录成功或失败后均清理；已有迁移脚本必须只处理数据库，不调用外部服务或自行访问其他运行路径。这些命令运行可信 Python 迁移代码，不提供脚本沙箱。自定义配置使用 `uv run --directory backend python -m entrypoints.cli --config /absolute/path/app.local.toml db-check`，`--config` 放在子命令前。
 
 ### 1. 按需备份已有库
 
@@ -65,13 +65,13 @@ sh entrypoints/service.sh
 命令从迁移历史重建比较基线，无需先升级日常库；一次完成一份候选迁移的审查，避免并发生成。
 
 ```bash
-uv run --directory backend python -m app.cli db-revision -m "add records"
+uv run --directory backend python -m entrypoints.cli db-revision -m "add records"
 ```
 
 对纯数据迁移、CHECK 表达式等未被检测的变化，显式创建手写模板并补全操作；模板中的 `pass` 不代表任务完成：
 
 ```bash
-uv run --directory backend python -m app.cli db-revision --empty -m "backfill record labels"
+uv run --directory backend python -m entrypoints.cli db-revision --empty -m "backfill record labels"
 ```
 
 ### 4. 审查实际操作和版本链
@@ -104,7 +104,7 @@ uv run --directory backend ruff format --config pyproject.toml "$migration_file"
 先运行迁移检查和相关测试，再按 [README 的验证命令](../README.md#接口类型与验证)完成后端检查：
 
 ```bash
-uv run --directory backend python -m app.cli db-check
+uv run --directory backend python -m entrypoints.cli db-check
 uv run --directory backend pytest tests/test_migrations.py tests/test_database.py
 ```
 

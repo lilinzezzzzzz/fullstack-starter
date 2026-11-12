@@ -4,6 +4,116 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-13 后端目录与应用装配提交前复核
+
+对照当前实现整体复核导入、entrypoints/infra/application 职责、项目创建器、测试、README、docs 及 6 份 AGENTS。旧命令和导入仅出现在历史说明或旧文件缺失断言中；统一后端规则中的应用级数据库/provider 与进程级 Loguru 边界。发现模板自身缺少服务入口时，动态源树扫描可能遗漏：分别删除临时模板的入口包文件、Python 服务入口和 Shell 脚本，3 项回归均先复现误报成功；补入显式必需清单后全部通过，失败只清理新目标并保留模板数据。
+
+最终本机完整后端测试 218 项通过，耗时 29.36 秒；Ruff lint、53 个 Python 文件格式检查、两个 Shell 入口语法检查、前端 Prettier/ESLint/API 类型一致性检查通过。Node.js 24.22.0、Corepack pnpm 9.12.2 下，隔离 E2E 完成 TypeScript 检查、临时生产构建和 4 项 Chromium 流程，浏览器阶段耗时 5.2 秒。退出时仍有此前各轮观察到的 multiprocessing semaphore 清理警告，未发现本次 CLI、服务、Playwright 运行器或浏览器残留，警告根因未在本轮处理。
+
+从审核开始时的 HEAD（870c565）导出源码，使用同一解释器和相同完整临时 TOML，对比原 app.cli 与新 entrypoints.cli：完整 OpenAPI 和配置导出 JSON 一致，两份锁文件及主 TOML 未变。实际生成独立副本后，27 个运行时模块导入、CLI/服务帮助和配置导出通过，无数据库、日志或前端产物；新标题、端口、入口路径、README 教程裁剪正确。13 份源文档的 85 处本地链接与 21 段 Bash 示例、生成副本的 84 处链接与 20 段示例通过；100 个必填配置叶子项和 6 个 telemetry 白名单键与实现对应，旧历史事件内容保留，仅更新现址说明。
+
+所有验证使用任务临时目录，日常数据、日志及前端产物 10 个文件哈希未变，未启停日常服务。整轮改动按一个本地提交准备，旧 Shell/CLI/Python 模块路径变更需调用方适配；本条记录提交前观察结果，提交状态以 Git 记录为准，未推送远程。
+
+## 2026-11-13 中间件与 HTTP 错误适配归入 infra
+
+将 `backend/app/middleware.py` 和 `backend/app/errors.py` 收拢到 `backend/app/infra/`。错误模块内容保持逐字节一致，中间件仅更新错误响应导入；应用工厂使用 `from app.infra import errors` 和 `errors.register_error_handlers(application)`，仍按中间件、异常处理、API、OpenAPI、SPA 的顺序装配。错误模型保留在 `schemas/common.py`，infra 包入口只含说明，不自动注册组件或初始化资源。
+
+项目创建器及生成回归同步两个新文件，确认旧根模块消失、缺少新文件时拒绝生成并清理本次目标；当前设计和后端规则同步通用 HTTP 适配职责。将应用工厂的导入及模块限定调用归一化后，与迁移前内容一致；完整 OpenAPI JSON 对比一致，API 类型一致性检查通过。
+
+完整后端测试 215 项通过，耗时 25.11 秒，覆盖 Host/Origin 拒绝、trace 与错误体/日志关联、未处理异常细节隐藏、协议头透传、数据库忙错误以及 API/SPA 边界和真实服务、项目生成。Node.js 24.22.0、Corepack pnpm 9.12.2 下，隔离 E2E 完成 TypeScript 检查、临时生产构建及 4 项 Chromium 流程，浏览器阶段耗时 5.2 秒。退出时仍出现此前的 multiprocessing semaphore 清理警告；按任务路径及其解析后的路径只读检查，未发现本次 CLI、服务、Playwright 运行器或浏览器残留，未在本次迁移中调整清理机制。
+
+Ruff lint、53 个 Python 文件格式检查、修改文档的 Prettier 检查、13 份文档的链接/锚点/代码块检查及 Git diff 空白检查通过。验证使用任务临时配置、SQLite、日志、浏览器目录和构建，无关源码、此前未提交改动及暂存区保留，日常产物 10 个文件哈希未变；未启停日常服务、未暂存或提交。
+
+## 2026-11-13 前端静态托管适配归入 infra
+
+将 `backend/app/frontend.py` 移至 `backend/app/infra/frontend.py`，文件内容与迁移前逐字节一致；应用工厂更新导入，继续由 lifespan 执行产物检查、`_mount_frontend()` 决定挂载及配置传入，API 注册仍先于 SPA。infra 包说明、后端规则及当前目录设计同步静态托管职责，包入口继续只含说明，不自动导入实现。
+
+项目创建器显式要求新文件，生成回归确认新路径存在、旧根模块消失，排除该文件时完整性检查拒绝生成并清理本次目标。完整后端测试 215 项通过，耗时 26.11 秒，覆盖构建产物缺失、API-only 模式、API/资源真实 404、SPA 导航、文档保留路径及真实服务和项目生成。
+
+API 类型一致性检查通过。Node.js 24.22.0、Corepack pnpm 9.12.2 下，隔离 E2E 完成 TypeScript 检查、临时生产构建和 4 项 Chromium 流程，浏览器阶段耗时 5.1 秒；退出时仍出现此前的 multiprocessing semaphore 清理警告，只读检查未发现本次 CLI、服务或 Playwright 运行器残留。
+
+Ruff lint、53 个 Python 文件格式检查、2 份修改文档的 Prettier 检查、13 份文档的链接/锚点/代码块检查及 Git diff 空白检查通过。测试配置、SQLite、日志、浏览器临时目录和构建均位于本次任务目录；无关源码、此前未提交改动与暂存区保留，日常产物 10 个文件哈希未变，未启停日常服务、未暂存或提交。
+
+## 2026-11-13 文档 URL 解析收拢到配置模型
+
+在 `ApplicationSettings` 增加只读派生属性 `docs_url`、`redoc_url`、`openapi_url`，将对应开关与路径解析为有效路径或 None，`create_app()` 直接读取结果。原有开关和路径继续全部必填，未增加 TOML 字段或配置导出字段；前端保留路径仍使用原始路径，OpenAPI 与交互文档的关联校验不变。
+
+文档配置回归扩展到 5 种合法开关组合，使用自定义路径验证 HTTP 200/404、关闭时不回退 SPA、配置模型导出仍等于原始 application 分组，以及业务 API 保持可用。完整后端测试 215 项通过，耗时 26.09 秒；完整 OpenAPI 和配置导出 JSON 与修改前一致，API 类型一致性检查通过，隔离导出未创建数据库、日志或前端产物。
+
+Ruff lint、53 个 Python 文件格式检查、配置文档的 Prettier 检查及 Git diff 空白检查通过；13 份 Markdown 的本地链接、标题锚点与代码块检查通过。验证使用任务临时配置、SQLite、日志与生成副本，无关源码、此前未提交改动及暂存区保留，日常产物 10 个文件哈希未变。未启停日常服务，未重跑前端构建或浏览器 E2E，未暂存或提交。
+
+## 2026-11-13 应用工厂按装配阶段拆分
+
+在 `backend/app/application.py` 内独立模块级 `lifespan`、`_register_api_routes`、`_configure_openapi` 和 `_mount_frontend`。`create_app(settings)` 保留显式 Settings 入参、本地 provider/FastAPI 构造、应用状态绑定与装配顺序；中间件单条注册和已有异常处理函数直接复用。lifespan 从当前应用状态取依赖，不引入全局配置或资源单例，保持引擎释放后解锁、再关闭 provider 与等待日志的原有顺序；OpenAPI 导出继续由 CLI 显式关闭 provider。
+
+新增应用生命周期回归：分别创建的应用使用各自数据库与 provider；修订检查抛出 RuntimeError 或 CancelledError 时，通过真实数据库文件锁与清理观察验证引擎关闭时仍持锁、provider 关闭前已解锁、日志完成最后被等待，原异常/取消继续传播。3 项定向回归通过，完整后端测试共 211 项通过，耗时 26.25 秒。
+
+重构前后完整 OpenAPI JSON 一致，隔离导出未创建数据库、日志或前端产物；API 类型一致性检查通过。Node.js 24.22.0、Corepack pnpm 9.12.2 下，隔离 E2E 完成 TypeScript 检查、临时生产构建和 4 项 Chromium 流程，浏览器阶段耗时 5.2 秒。退出时仍出现此前的 multiprocessing semaphore 清理警告；只读检查未发现本次 CLI、服务或 Playwright 运行器残留，本次未改服务信号处理或引入新的清理机制。
+
+Ruff lint、53 个 Python 文件格式检查、修改文档的 Prettier 检查、13 份文档的链接/锚点/代码块检查及 Git diff 空白检查通过。配置、SQLite、日志、浏览器临时目录和构建均位于本次任务目录；无关源码、此前未提交改动和暂存区保留，日常产物 10 个文件哈希未变，未启停日常服务、未暂存或提交。
+
+## 2026-11-13 API 路由装配并入 application
+
+将 `backend/app/api.py` 完整并入 `backend/app/application.py` 并删除原文件。`create_app()` 内创建 API 聚合路由，保留 `/api` 前缀、400/403/404/422/500/503 的公共 ErrorResponse 声明，按原顺序注册 health 与 hello 后再挂载 SPA；具体 HTTP 处理器仍由 routers 模块实现。项目生成回归更新文件完整性检查并确认副本不含旧 api.py，当前设计与后端规则同步装配职责。
+
+在完整临时 TOML 下导出重构前后 OpenAPI，JSON 结构与内容完全一致，路径、operation ID、请求/响应 Schema 和公共错误引用均未变化；导出未创建数据库、日志或前端产物。完整后端测试 208 项通过，耗时 26.26 秒，包含 API/静态回退、隔离导出、真实服务及项目生成验证；API 类型一致性检查通过，生成类型未变。
+
+Ruff lint、52 个 Python 文件格式检查、修改文档的 Prettier 检查及 Git diff 空白检查通过；13 份 Markdown 的本地链接、标题锚点和代码块检查通过。验证使用任务临时配置、SQLite、日志与生成副本，无关源码、此前未提交改动及暂存区保留，日常产物 10 个文件哈希未变；未启停日常服务，未重跑前端构建或浏览器 E2E，未暂存或提交。
+
+## 2026-11-13 基础设施包简称 infra
+
+将 `backend/app/infrastructure/` 重命名为 `backend/app/infra/`，包内 `__init__.py`、`database.py` 与 `logging_setup.py` 内容保持逐字节一致。应用、服务入口、备份、健康检查、Alembic 环境及测试改用 `app.infra`，项目创建器的必需文件和缺失文件回归同步新路径，并确认副本不再包含旧 infrastructure 目录。当前设计、架构对齐指南及后端规则同步包名，历史事件描述保留，仅更新现址链接。
+
+本机完整后端测试 208 项通过，耗时 30.17 秒，包含轻量包导入、数据库/日志、项目生成及 3 项真实服务测试；API 类型一致性检查通过，生成类型未变。Ruff lint、53 个 Python 文件格式检查、3 份修改文档的 Prettier 检查和 Git diff 空白检查通过；13 份 Markdown 的 85 处本地链接/锚点与 21 段 Bash 示例语法检查通过。
+
+验证使用任务临时配置、SQLite、日志与生成副本；无关源码、此前未提交改动及暂存区保留，日常产物 10 个文件哈希未变。未启停日常服务，未重跑前端构建或浏览器 E2E，未暂存或提交。
+
+## 2026-11-13 数据库与日志收拢为 infrastructure
+
+新增 `backend/app/infrastructure/`，仅迁入 `database.py` 与 `logging_setup.py`，两份文件与迁移前逐字节一致；包入口只有职责说明，不导入实现或创建资源。应用工厂、服务入口、健康检查、备份、Alembic 环境与测试的导入同步更新，`utils/` 继续提供标准库底层辅助能力，中间件、错误处理和配置模块保持原位与原内容。
+
+项目创建器显式要求基础设施包及两个实现文件，生成回归确认新文件存在、旧根模块消失，排除关键文件时拒绝生成并清理本次目标。当前设计、架构对齐指南与后端规则同步职责及路径；历史日志模块链接保留原路径说明并标注现址。
+
+本机完整后端测试 208 项通过，耗时 26.69 秒，覆盖轻量包导入与遥测环境隔离、数据库连接/事务/备份/迁移、日志桥接、3 项真实服务测试及项目生成。API 类型一致性检查通过，生成类型未变；Ruff lint、53 个 Python 文件格式检查、3 份修改文档的 Prettier 检查和 Git diff 空白检查通过。13 份 Markdown 的 85 处本地链接/锚点与 21 段 Bash 示例语法检查通过。
+
+验证使用任务临时配置、SQLite、日志与生成副本；无关源码、此前未提交改动及暂存区保留，日常数据、日志与前端产物的 10 个文件哈希未变。未启停日常服务，未重跑前端构建或浏览器 E2E，未暂存或提交。
+
+## 2026-11-12 CLI 维护入口归入 entrypoints
+
+将 `backend/app/cli.py` 移至 `backend/entrypoints/cli.py`，CLI 文件内容与迁移前逐字节一致，命令统一使用 `uv run --directory backend python -m entrypoints.cli ...`。项目创建器、测试中的模块导入和子进程调用、前端配置读取、API 类型生成、E2E 建库及当前文档/指令同步更新。创建器显式要求 CLI 文件存在，生成回归确认旧 app/cli.py 消失、新入口可执行且缺失时拒绝生成。
+
+`middleware.py`、`logging_setup.py`、`errors.py` 未改动，`database.py` 保持原位，只更新两条错误提示中的命令名并换行；将提示字符串归一化后 AST 与迁移前一致。数据库、日志、HTTP 处理等能力仍由原模块提供，应用模块不反向导入 CLI；历史命令按当时语义保留。
+
+本机完整后端测试 208 项通过，耗时 26.10 秒，覆盖配置/OpenAPI 导出、迁移生成/检查/升级、备份连接关闭、错误报告、项目生成和真实服务测试。Node.js 24.22.0、Corepack pnpm 9.12.2 下 API 类型一致性检查通过；E2E 完成 TypeScript 检查、临时目录生产构建、经新 CLI 初始化临时数据库及 4 项 Chromium 流程，浏览器阶段耗时 5.3 秒。E2E 退出时仍出现 multiprocessing semaphore 清理警告，只读检查未发现本次 CLI、服务或 Playwright 运行器残留；本次未调整日志或进程清理实现。
+
+Ruff lint、52 个 Python 文件格式检查、3 个前端工具脚本的 Node 语法/ESLint 及修改文档和脚本的 Prettier 检查通过；13 份 Markdown 的本地链接、标题锚点、代码块检查与 Git diff 空白检查通过。验证使用任务临时配置、数据库、日志、浏览器临时目录和构建产物，无关源码、此前的未提交迁移及暂存区保留，日常产物 10 个文件哈希未变；未启停日常服务，未暂存或提交。
+
+## 2026-11-12 应用工厂模块改名为 application
+
+将 `backend/app/main.py` 改为 `backend/app/application.py`，文件内容与改名前逐字节一致；服务入口、OpenAPI CLI、测试和独立子进程探针改用 `app.application`。项目创建器显式要求副本包含新工厂文件，生成回归检查新文件存在、旧 main.py 不存在，并使用新路径验证源码保护及缺失文件拒绝。README、设计、架构对齐指南与后端规则同步职责和路径，历史条目保留当时语义。
+
+本机完整后端测试 208 项通过，耗时 26.50 秒，包含 3 项真实服务启停测试；覆盖独立进程环境隔离、应用导入与无数据库/前端产物的 OpenAPI 导出、provider 关闭、生成副本及文件完整性检查。API 类型一致性检查通过，生成类型未变；Ruff lint、52 个 Python 文件格式检查、4 份现行文档的 Prettier 检查及 Git diff 空白检查通过。13 份 Markdown 的 85 处本地链接/锚点与 21 段 Bash 示例语法检查通过。
+
+验证使用任务临时配置、SQLite、日志与生成副本；无关源码、已有入口迁移与暂存区保留，日常数据、日志和前端产物共 10 个文件哈希未变。未启停日常服务，未运行前端构建或浏览器 E2E，未暂存或提交。
+
+## 2026-11-12 Shell 与 Python 服务入口统一
+
+将根目录的 `entrypoints/service.sh` 移至 `backend/entrypoints/service.sh`，移除根入口目录，Shell 改为向上两级定位项目根目录，继续通过后端 uv 环境执行 `entrypoints.service`。Python 服务实现保持不变；日常启动命令改为 `sh backend/entrypoints/service.sh`。项目创建器的源码目录、后续命令、复制完整性断言、服务集成测试、E2E 服务命令、源码路径保护、当前文档与指令同步更新。历史条目保留当时的路径与命令。
+
+本机观察结果：完整后端测试 208 项通过，耗时 24.59 秒，包含 3 项真实前台服务测试及生成副本验证；首轮有一个旧根目录的大小写别名用例漏改，修正为 `BACKEND/ENTRYPOINTS` 后完整重跑通过。生成副本包含统一入口，不含根 entrypoints 目录；Shell 或 Python 入口被排除时均拒绝生成并清理本次目标。
+
+Node.js 24.22.0、Corepack pnpm 9.12.2 下，通过统一 E2E 入口完成 TypeScript 检查、临时目录生产构建及 4 项 Chromium 页面测试，浏览器阶段耗时 5.2 秒；临时配置路径包含空格与单引号。首次 Chromium 启动被 macOS 沙箱拒绝 MachPort 通信，在允许该权限的环境重跑后通过。E2E 退出时出现 multiprocessing semaphore 清理警告；只读进程检查未发现本次残留服务或 Playwright 运行器，未在本次入口整理中调整日志或进程清理实现。
+
+Ruff lint、52 个 Python 文件格式检查、Shell 语法、E2E 运行器的 Node 语法/ESLint/Prettier 及修改文档的格式检查通过；13 份文档的本地链接、标题锚点与代码块检查和 Git diff 空白检查通过。验证使用任务临时 TOML、SQLite、日志和构建目录；日常数据、日志与前端产物共 10 个文件的哈希保持一致，无关源码及暂存区未变，未暂存或提交。
+
+## 2026-11-12 后端运行入口归入 entrypoints
+
+将 `backend/tools/service_control.py` 移至 `backend/entrypoints/service.py`，包说明改为后端可执行入口；服务实现与迁移前逐字节一致。根 `entrypoints/service.sh` 改为执行 `python -m entrypoints.service`，命令参数、前台运行、Uvicorn 信号处理与日志退出清理保持原有行为。项目创建器的必需源码目录及生成回归同步更新，README、设计、架构对齐指南与后端规则同步入口职责。旧历史路径保留，只为已迁移文件标注现址并修复链接。
+
+本机定向验证：`tests/test_service.py` 与 `tests/test_project_creation.py` 共 25 项通过，耗时 18.40 秒，包含 3 项真实前台服务集成测试；覆盖 Ctrl+C、运行中迁移互斥、重复服务拒绝、启动失败与端口占用保护。生成副本包含新入口、不含旧 tools 目录，实际执行新模块 `--help` 成功且不创建日常数据或日志；排除新入口的模板被完整性校验拒绝并清理本次目标。
+
+Ruff lint、52 个 Python 文件格式检查、Shell 入口语法、4 份修改过的现行 Markdown 的 Prettier 检查及 Git diff 空白检查通过；13 份文档的本地链接、标题锚点和代码块检查通过。验证使用任务临时配置、数据库、日志与生成副本；未启停日常服务、未操作日常数据库、未运行完整后端回归或前端构建/浏览器 E2E，未暂存或提交。
+
 ## 2026-11-12 文档与分层指令一致性复核
 
 整体复核 README、docs 下的文档与 6 份 AGENTS，并对照配置校验、路径策略、应用与备份生命周期、E2E 运行器及项目创建器。修正私有目录与公开输出限制混淆、E2E 成功清理遗漏 keep_artifacts 条件、根目录执行命令缺少 uv/backend 定位、备份不持有服务锁等说明。分层指令补齐三份指南的职责与 README 裁剪标题约束，设计文档减少重复操作细节，数据库流程改为独立编号标题；旧历史条目保留原样。
@@ -273,7 +383,7 @@ FastAPI 原生 OpenTelemetry 的五项开关显式关闭，依赖下限调整为
 
 ## 2026-10-25 日志初始化模块命名
 
-将 `backend/app/logging_config.py` 重命名为 [backend/app/logging_setup.py](../backend/app/logging_setup.py)，同步应用工厂、服务控制器和测试导入，以及当前设计中的目录名称。`InterceptHandler` 和 `configure_logging` 的实现保持不变。
+将 `backend/app/logging_config.py` 重命名为 `backend/app/logging_setup.py`（现址：[backend/app/infra/logging_setup.py](../backend/app/infra/logging_setup.py)），同步应用工厂、服务控制器和测试导入，以及当前设计中的目录名称。`InterceptHandler` 和 `configure_logging` 的实现保持不变。
 
 macOS 本地完整后端测试 86 项通过，包含日志桥接去重、请求标识和真实 sh/PID 启停。Ruff lint、36 个 Python 文件格式检查及 API 类型一致性检查通过。测试使用临时配置、数据库、日志和 PID；日常服务保持停止。
 
@@ -284,7 +394,7 @@ macOS 本地完整后端测试 86 项通过，包含日志桥接去重、请求�
 | 原位置 | 当前实现 |
 | --- | --- |
 | `backend/app/scaffold.py` | [scripts/create_project.py](../scripts/create_project.py) |
-| `backend/app/service.py` | [backend/tools/service_control.py](../backend/tools/service_control.py) |
+| `backend/app/service.py` | `backend/tools/service_control.py`（现址：[backend/entrypoints/service.py](../backend/entrypoints/service.py)） |
 
 创建器保持标准库实现，并按新位置调整项目根目录定位；服务控制器以 `tools.service_control` 模块运行，启动子进程和 PID 身份校验共用该模块名。测试更新导入，并验证配置路径不同的同名控制器不会被误认为自身服务。新项目复制测试检查新文件存在、旧位置已移除。Ruff 统一使用后端配置，覆盖后端和根目录的创建器；README 与当前设计同步更新，历史位置保留在历史记录中。
 

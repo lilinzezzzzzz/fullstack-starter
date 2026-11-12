@@ -36,7 +36,7 @@ def main() -> None:
         if args.command == "export-settings":
             print(json.dumps(settings.model_dump(mode="json"), ensure_ascii=False, sort_keys=True))
         elif args.command == "export-openapi":
-            from app.main import create_app
+            from app.application import create_app
 
             application = create_app(settings)
             try:

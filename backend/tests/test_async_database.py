@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.config import BACKEND_ROOT, Settings
-from app.database import create_database_engine, get_session
+from app.infra.database import create_database_engine, get_session
 from app.maintenance.backup import DatabaseBackup
 from migrations.operations import migration_heads
 
@@ -99,7 +99,7 @@ def test_backup_cli_runs_and_closes_its_async_connections(
         [
             sys.executable,
             "-m",
-            "app.cli",
+            "entrypoints.cli",
             "--config",
             str(tmp_path / "settings.toml"),
             "db-backup",

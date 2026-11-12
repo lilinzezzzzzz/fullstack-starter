@@ -9,7 +9,7 @@ from uuid import uuid7
 import aiosqlite
 
 from app.config import Settings
-from app.database import check_sqlite_version
+from app.infra.database import check_sqlite_version
 from migrations.operations import migration_heads
 
 

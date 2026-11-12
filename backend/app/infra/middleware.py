@@ -8,7 +8,7 @@ from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import Settings
-from app.errors import error_response
+from app.infra.errors import error_response
 
 
 class RequestMiddleware:

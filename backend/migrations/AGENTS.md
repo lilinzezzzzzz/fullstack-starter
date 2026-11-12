@@ -16,8 +16,8 @@
 从项目根目录运行，使用完整 TOML；自定义配置的 `--config` 放在子命令前。
 
 ```bash
-uv run --directory backend python -m app.cli db-revision -m "describe schema change"
-uv run --directory backend python -m app.cli db-check
+uv run --directory backend python -m entrypoints.cli db-revision -m "describe schema change"
+uv run --directory backend python -m entrypoints.cli db-check
 uv run --directory backend pytest tests/test_migrations.py tests/test_database.py
 uv run --directory backend alembic heads
 uv run --directory backend alembic history

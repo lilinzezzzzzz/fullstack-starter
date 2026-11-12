@@ -15,13 +15,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application import create_app
 from app.config import BACKEND_ROOT, PROJECT_ROOT, Settings
-from app.database import (
+from app.infra.database import (
     SessionDep,
     check_sqlite_version,
     create_database_engine,
 )
-from app.main import create_app
 from app.maintenance.backup import DatabaseBackup
 from app.utils.database_lock import ServiceError, operation_lock
 from migrations.operations import migration_config, upgrade_database
@@ -213,7 +213,7 @@ def test_openapi_export_needs_no_database_or_frontend(tmp_path: Path) -> None:
         tmp_path, data_dir=str(data_dir), frontend_dir=str(frontend_dir), serve_frontend=True
     )
     result = subprocess.run(
-        [sys.executable, "-m", "app.cli", "--config", str(config_file), "export-openapi"],
+        [sys.executable, "-m", "entrypoints.cli", "--config", str(config_file), "export-openapi"],
         cwd=BACKEND_ROOT,
         capture_output=True,
         text=True,

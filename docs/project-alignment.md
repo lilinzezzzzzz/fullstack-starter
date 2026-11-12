@@ -44,17 +44,17 @@ SQLite、本地单用户、全部必填 TOML、FastAPI 托管前端以及只维�
 
 逐项填写原项目的真实位置与证据，然后选择保留、移动、拆分或暂缓。已有清晰的模块边界可以继续使用，不为目录一致引入额外抽象。
 
-| 职责                          | 本脚手架的参考位置                                     | 检查重点                                               |
-| ----------------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| HTTP 参数、依赖声明和响应映射 | `backend/app/routers/`                                 | 业务规则、写事务是否混入请求适配                       |
-| 业务规则和事务                | `backend/app/services/`                                | 业务类是否处理 Request、构造 I/O Schema 或创建基础设施 |
-| 持久化结构与接口 Schema       | `backend/app/models/`、`backend/app/schemas/`          | ORM 与接口结构是否耦合，模型是否完整注册               |
-| 依赖组装                      | 各 Service 模块的 `new_*_service` 工厂                 | 构造注入、请求作用域与 CLI 组装是否明确                |
-| 应用与资源生命周期            | `backend/app/main.py`、`backend/app/database.py`       | 导入副作用、启动检查、失败清理和关闭责任               |
-| 维护与迁移                    | `backend/app/maintenance/`、`backend/migrations/`      | 请求路径是否执行维护，迁移是否隐式运行                 |
-| 运行入口与工程工具            | `entrypoints/`、`scripts/`、`backend/tools/`           | 工具与应用依赖方向、运行方式和失败退出                 |
-| 前端请求、查询与呈现          | `frontend/src/api/`、`hooks/`、`pages/`、`components/` | 请求取消、重试、状态与呈现是否职责清楚                 |
-| 文档与协作规则                | README、`docs/`、分层 `AGENTS.md`                      | 当前状态、目标状态和历史证据是否分开                   |
+| 职责                          | 本脚手架的参考位置                                            | 检查重点                                               |
+| ----------------------------- | ------------------------------------------------------------- | ------------------------------------------------------ |
+| HTTP 参数、依赖声明和响应映射 | `backend/app/routers/`                                        | 业务规则、写事务是否混入请求适配                       |
+| 业务规则和事务                | `backend/app/services/`                                       | 业务类是否处理 Request、构造 I/O Schema 或创建基础设施 |
+| 持久化结构与接口 Schema       | `backend/app/models/`、`backend/app/schemas/`                 | ORM 与接口结构是否耦合，模型是否完整注册               |
+| 依赖组装                      | 各 Service 模块的 `new_*_service` 工厂                        | 构造注入、请求作用域与 CLI 组装是否明确                |
+| 应用与资源生命周期            | `backend/app/application.py`、`backend/app/infra/database.py` | 导入副作用、启动检查、失败清理和关闭责任               |
+| 维护与迁移                    | `backend/app/maintenance/`、`backend/migrations/`             | 请求路径是否执行维护，迁移是否隐式运行                 |
+| 运行入口与工程工具            | `backend/entrypoints/`、`scripts/`                            | 入口与应用依赖方向、运行方式和失败退出                 |
+| 前端请求、查询与呈现          | `frontend/src/api/`、`hooks/`、`pages/`、`components/`        | 请求取消、重试、状态与呈现是否职责清楚                 |
+| 文档与协作规则                | README、`docs/`、分层 `AGENTS.md`                             | 当前状态、目标状态和历史证据是否分开                   |
 
 原项目可使用以下表头记录决策；证据填写具体文件、符号、调用方或检查结果，不仅写目录名：
 

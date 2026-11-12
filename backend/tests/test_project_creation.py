@@ -24,7 +24,7 @@ def run_creator(script: Path, cwd: Path, arguments: list[str]) -> subprocess.Com
 
 def exported_settings(project: Path) -> dict:
     result = subprocess.run(
-        [sys.executable, "-m", "app.cli", "export-settings"],
+        [sys.executable, "-m", "entrypoints.cli", "export-settings"],
         cwd=project / "backend",
         capture_output=True,
         text=True,
@@ -51,8 +51,8 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
         [*arguments(target, "ledger-app", "18123"), "--vite-port", "5182"],
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "python -m app.cli db-check" in result.stdout
-    assert "sh entrypoints/service.sh" in result.stdout
+    assert "python -m entrypoints.cli db-check" in result.stdout
+    assert "sh backend/entrypoints/service.sh" in result.stdout
     settings = exported_settings(target)
     assert settings["application"]["title"] == "ledger-app"
     assert settings["server"]["port"] == 18123
@@ -79,10 +79,41 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert (target / "backend/migrations/versions/0001_baseline.py").is_file()
     assert (target / "backend/migrations/development.py").is_file()
     assert (target / "backend/migrations/operations.py").is_file()
+    assert (target / "backend/app/application.py").is_file()
+    assert not (target / "backend/app/api.py").exists()
+    assert (target / "backend/app/infra/__init__.py").is_file()
+    assert (target / "backend/app/infra/database.py").is_file()
+    assert (target / "backend/app/infra/errors.py").is_file()
+    assert (target / "backend/app/infra/frontend.py").is_file()
+    assert (target / "backend/app/infra/logging_setup.py").is_file()
+    assert (target / "backend/app/infra/middleware.py").is_file()
+    assert not (target / "backend/app/errors.py").exists()
+    assert not (target / "backend/app/middleware.py").exists()
+    assert not (target / "backend/app/infrastructure").exists()
+    assert not (target / "backend/app/database.py").exists()
+    assert not (target / "backend/app/logging_setup.py").exists()
+    assert not (target / "backend/app/frontend.py").exists()
+    assert not (target / "backend/app/main.py").exists()
     assert (target / "scripts/create_project.py").is_file()
-    assert (target / "entrypoints/service.sh").is_file()
-    assert (target / "backend/tools/__init__.py").is_file()
-    assert (target / "backend/tools/service_control.py").is_file()
+    assert (target / "backend/entrypoints/service.sh").is_file()
+    assert (target / "backend/entrypoints/__init__.py").is_file()
+    assert (target / "backend/entrypoints/service.py").is_file()
+    assert (target / "backend/entrypoints/cli.py").is_file()
+    assert not (target / "backend/app/cli.py").exists()
+    assert not (target / "entrypoints").exists()
+    assert not (target / "backend/tools").exists()
+    for module in ("entrypoints.service", "entrypoints.cli"):
+        help_result = subprocess.run(
+            [sys.executable, "-m", module, "--help"],
+            cwd=target / "backend",
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert help_result.returncode == 0, help_result.stdout + help_result.stderr
+        assert "--config" in help_result.stdout
+    assert not (target / ".data").exists()
+    assert not (target / "logs").exists()
     assert not (target / "backend/app/scaffold.py").exists()
     assert not (target / "backend/app/service.py").exists()
     assert (target / "frontend/src/types/api.generated.d.ts").is_file()
@@ -115,7 +146,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     config_file = tmp_path / "migration-check.toml"
     config_file.write_text(tomli_w.dumps(migration_config))
     check = subprocess.run(
-        [sys.executable, "-m", "app.cli", "--config", str(config_file), "db-check"],
+        [sys.executable, "-m", "entrypoints.cli", "--config", str(config_file), "db-check"],
         cwd=target / "backend",
         capture_output=True,
         text=True,
@@ -335,7 +366,7 @@ def test_creator_rejects_source_paths_before_copying(tmp_path: Path, field: str)
         section, name = field.split(".")
         config[section][name] = "backend/app"
     path.write_text(tomli_w.dumps(config))
-    original = (template / "backend/app/main.py").read_bytes()
+    original = (template / "backend/app/application.py").read_bytes()
     target = tmp_path / "rejected"
     result = run_creator(
         template / "scripts/create-project.sh",
@@ -345,7 +376,7 @@ def test_creator_rejects_source_paths_before_copying(tmp_path: Path, field: str)
     assert result.returncode == 1
     assert "project source" in result.stderr
     assert not target.exists()
-    assert (template / "backend/app/main.py").read_bytes() == original
+    assert (template / "backend/app/application.py").read_bytes() == original
 
 
 def test_creator_rejects_invalid_template_settings_before_copying(tmp_path: Path) -> None:
@@ -378,8 +409,16 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
     )
     assert result.returncode == 0, result.stderr
     excluded = (
-        "/backend/app/main.py",
-        "/backend/app/api.py",
+        "/backend/app/application.py",
+        "/backend/app/infra/__init__.py",
+        "/backend/app/infra/database.py",
+        "/backend/app/infra/errors.py",
+        "/backend/app/infra/frontend.py",
+        "/backend/app/infra/logging_setup.py",
+        "/backend/app/infra/middleware.py",
+        "/backend/entrypoints/service.py",
+        "/backend/entrypoints/service.sh",
+        "/backend/entrypoints/cli.py",
         "/frontend/src/App.tsx",
     )
     with (template / ".gitignore").open("a") as handle:
@@ -392,11 +431,73 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
     )
     assert result.returncode == 1
     assert "missing required files" in result.stderr
-    for name in ("backend/app/main.py", "backend/app/api.py", "frontend/src/App.tsx"):
+    for name in (
+        "backend/app/application.py",
+        "backend/app/infra/__init__.py",
+        "backend/app/infra/database.py",
+        "backend/app/infra/errors.py",
+        "backend/app/infra/frontend.py",
+        "backend/app/infra/logging_setup.py",
+        "backend/app/infra/middleware.py",
+        "backend/entrypoints/service.py",
+        "backend/entrypoints/service.sh",
+        "backend/entrypoints/cli.py",
+        "frontend/src/App.tsx",
+    ):
         assert name in result.stderr
     assert not target.exists()
-    for name in ("backend/app/main.py", "backend/app/api.py", "frontend/src/App.tsx"):
+    for name in (
+        "backend/app/application.py",
+        "backend/app/infra/__init__.py",
+        "backend/app/infra/database.py",
+        "backend/app/infra/errors.py",
+        "backend/app/infra/frontend.py",
+        "backend/app/infra/logging_setup.py",
+        "backend/app/infra/middleware.py",
+        "backend/entrypoints/service.py",
+        "backend/entrypoints/service.sh",
+        "backend/entrypoints/cli.py",
+        "frontend/src/App.tsx",
+    ):
         assert (template / name).is_file()
+
+
+@pytest.mark.parametrize(
+    "missing_file",
+    [
+        "backend/entrypoints/__init__.py",
+        "backend/entrypoints/service.py",
+        "backend/entrypoints/service.sh",
+    ],
+)
+def test_creator_rejects_missing_service_source_without_changing_template_data(
+    tmp_path: Path, missing_file: str
+) -> None:
+    template = tmp_path / "template"
+    result = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert result.returncode == 0, result.stderr
+    (template / missing_file).unlink()
+    marker = template / ".data/keep.txt"
+    marker.parent.mkdir()
+    marker.write_text("keep template data")
+    target = tmp_path / "incomplete"
+
+    result = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "sample-app", "18124"),
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "missing required files" in result.stderr
+    assert missing_file in result.stderr
+    assert not target.exists()
+    assert marker.read_text() == "keep template data"
+    assert not (template / missing_file).exists()
 
 
 def test_git_ignores_private_files_and_runtime_artifacts(tmp_path: Path) -> None:

@@ -15,7 +15,7 @@ export function readProjectSettings(path) {
       resolve(projectRoot, 'backend'),
       'python',
       '-m',
-      'app.cli',
+      'entrypoints.cli',
       '--config',
       path,
       'export-settings',

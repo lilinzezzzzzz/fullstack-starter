@@ -13,8 +13,8 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import Tracer
 from pydantic import ValidationError
 
+from app.application import create_app
 from app.config import BACKEND_ROOT, Settings, load_settings
-from app.main import create_app
 from tests.helpers import read_config, response_trace_id, save_config, write_config
 
 POISONED_ENVIRONMENT = {
@@ -48,6 +48,7 @@ def test_telemetry_package_keeps_environment_cleanup_before_third_party_imports(
                 import os
                 import sys
                 import app
+                import app.infra
                 from app.telemetry import new_tracer_provider
                 from app.telemetry.environment import clear_telemetry_environment
 
@@ -126,7 +127,7 @@ def test_fresh_process_ignores_environment_before_telemetry_imports(tmp_path: Pa
                 import os
                 import sys
                 from app.config import load_settings
-                from app.main import create_app
+                from app.application import create_app
                 from fastapi.testclient import TestClient
                 from opentelemetry import trace
                 from migrations.operations import upgrade_database

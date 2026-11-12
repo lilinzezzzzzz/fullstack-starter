@@ -6,9 +6,9 @@ from fastapi.testclient import TestClient
 from opentelemetry.trace import format_span_id, get_current_span
 from starlette.exceptions import HTTPException
 
+from app.application import create_app
 from app.config import Settings
-from app.errors import AppError
-from app.main import create_app
+from app.infra.errors import AppError
 from app.services.hello import HelloService, new_hello_service
 from tests.helpers import response_trace_context, response_trace_id
 

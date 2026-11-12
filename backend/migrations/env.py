@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import Connection
 
 from app.config import CONFIG_FILE, load_settings
-from app.database import create_database_engine
+from app.infra.database import create_database_engine
 from app.models import Base
 
 config = context.config

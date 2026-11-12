@@ -28,7 +28,9 @@ def create_database_engine(settings: Settings, *, allow_create: bool = False) ->
     if allow_create:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
     elif not settings.database_path.is_file():
-        raise RuntimeError("Database missing. Run app.cli db-upgrade with the same --config file.")
+        raise RuntimeError(
+            "Database missing. Run entrypoints.cli db-upgrade with the same --config file."
+        )
 
     # mode=rw 防止正常启动或重连时静默创建空数据库。
     url = URL.create(
@@ -81,7 +83,8 @@ async def check_database_revision(engine: AsyncEngine, settings: Settings) -> No
         current = await connection.run_sync(current_heads)
     if current != migration_heads(settings):
         raise RuntimeError(
-            "Database schema is not current. Run app.cli db-upgrade with the same --config file."
+            "Database schema is not current. "
+            "Run entrypoints.cli db-upgrade with the same --config file."
         )
 
 

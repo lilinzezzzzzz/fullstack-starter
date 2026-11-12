@@ -10,7 +10,7 @@
 
 前后端放在同一个仓库，分别维护依赖和锁文件。FastAPI 提供 API，并托管 React SPA 的构建产物；依赖、数据库和前端产物准备好后，日常只运行一个 Python HTTP 服务。Node.js 只用于前端开发、检查和构建。
 
-前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh entrypoints/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。
+前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh backend/entrypoints/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。
 
 ## 技术选型
 
@@ -42,8 +42,6 @@ fullstack-starter/
 ├── .gitignore
 ├── .node-version
 ├── configs/app.toml                  # 唯一应用配置入口
-├── entrypoints/                      # 应用与服务启动入口
-│   └── service.sh                    # 前台启动，Ctrl+C 停止
 ├── scripts/                          # 工程工具
 │   ├── create-project.sh             # 创建项目的 sh 入口
 │   └── create_project.py             # 复制、重命名、配置与锁文件校验
@@ -59,7 +57,7 @@ fullstack-starter/
 │   ├── .python-version
 │   ├── alembic.ini
 │   ├── app/
-│   │   ├── main.py                   # 应用工厂和 lifespan
+│   │   ├── application.py            # 应用工厂、路由装配和 lifespan
 │   │   ├── config.py                 # 配置读取、校验和路径解析
 │   │   ├── telemetry/                # 原生 telemetry 上下文装配
 │   │   │   ├── __init__.py            # 轻量工厂导出入口
@@ -68,20 +66,23 @@ fullstack-starter/
 │   │   ├── utils/                    # 应用与工程工具共用的底层辅助模块
 │   │   │   ├── database_lock.py      # 运行服务与离线迁移共用的数据库锁
 │   │   │   └── path_safety.py        # 大小写/符号链接安全的运行路径边界
-│   │   ├── database.py               # 异步引擎、会话依赖和版本检查
-│   │   ├── api.py                    # API 路由装配
-│   │   ├── frontend.py               # 静态托管与 SPA 回退边界
-│   │   ├── errors.py / middleware.py # 错误、链路标识和访问边界
-│   │   ├── logging_setup.py           # 日志初始化与 Uvicorn 桥接
-│   │   ├── cli.py                    # 配置/OpenAPI 导出、迁移、备份命令
+│   │   ├── infra/                    # 数据库、日志、静态托管与 HTTP 适配
+│   │   │   ├── __init__.py           # 轻量包入口，无资源初始化
+│   │   │   ├── database.py           # 异步引擎、会话依赖和版本检查
+│   │   │   ├── errors.py             # 标准错误响应与异常处理器
+│   │   │   ├── frontend.py           # 静态托管与 SPA 回退边界
+│   │   │   ├── logging_setup.py      # 日志初始化与 Uvicorn 桥接
+│   │   │   └── middleware.py         # ASGI 访问控制、trace 与请求日志
 │   │   ├── routers/                  # hello.py、health.py
 │   │   ├── services/                 # hello.py 业务类与同文件组装工厂
 │   │   ├── maintenance/              # backup.py、CLI 维护基础设施
 │   │   ├── models/                   # SQLAlchemy Base，无业务表
 │   │   └── schemas/                  # Hello、健康检查与错误 Schema
-│   ├── tools/
+│   ├── entrypoints/                  # 后端 Shell 与 Python 可执行入口
 │   │   ├── __init__.py
-│   │   └── service_control.py        # TOML 配置与前台 Uvicorn 启动
+│   │   ├── cli.py                    # 配置/OpenAPI 导出、迁移、备份命令
+│   │   ├── service.sh                # 定位环境并前台启动，Ctrl+C 停止
+│   │   └── service.py               # TOML 配置与前台 Uvicorn 启动
 │   ├── migrations/
 │   │   ├── __init__.py               # 迁移包，不在导入时执行迁移
 │   │   ├── operations.py             # Alembic 配置、head 查询、显式升级
@@ -114,9 +115,13 @@ fullstack-starter/
 
 后端与前端各自维护依赖；根目录不增加前端工作区包或统一运行器。随附目录及常见依赖、构建、日志、SQLite 辅助文件和私有文件模式被 Git 忽略；自定义运行路径需同步核对忽略规则。
 
-`entrypoints/` 存放应用与服务的启动脚本，`scripts/` 存放项目生成等工程工具。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用；`backend/tools/service_control.py` 是前台启动的 Python 实现，在后端环境中作为 `tools.service_control` 模块运行，读取应用配置、装配日志及工厂，然后直接调用 `uvicorn.run()`。依赖方向为工具调用应用，`app/` 保留运行基础和业务分层。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
+`backend/entrypoints/` 集中存放后端可执行入口，`scripts/` 存放项目生成等工程工具。`service.sh` 从自身位置向上两级定位项目根目录，再通过 uv 进入后端环境运行 `entrypoints.service`；`service.py` 读取应用配置、装配日志及工厂，然后直接调用 `uvicorn.run()`。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用。依赖方向为入口和工具调用应用，`app/` 保留运行基础和业务分层，不反向依赖可执行入口。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
+
+`backend/entrypoints/cli.py` 作为 `entrypoints.cli` 运行，处理配置/OpenAPI 导出、数据库维护命令的参数、对象组装和事件循环边界；具体能力仍由应用配置、`app/maintenance/` 与 `backend/migrations/` 提供。应用模块不导入 CLI，前端工程工具通过子进程调用该入口。
 
 `app/utils/` 存放供应用与工程工具复用的底层辅助模块，由调用方提供必要参数，包入口保持轻量。当前模块均仅依赖标准库：`path_safety.py` 提供应用配置和创建器共用的路径保护规则；`database_lock.py` 提供运行服务与离线迁移共用的数据库文件锁。辅助模块不反向依赖配置、业务服务或工具模块。
+
+`app/infra/` 收拢数据库、日志、静态托管与通用 HTTP 适配，包入口只描述职责，不导入实现、注册组件或创建资源。`frontend.py` 提供构建产物检查和文件服务，应用工厂的 `_mount_frontend()` 决定是否挂载、传入配置并维护 API 优先顺序，lifespan 按需执行产物检查。`middleware.py` 负责 Host/Origin、trace、响应头与请求日志，`errors.py` 负责标准错误响应和异常到 HTTP 的映射，错误模型仍由 `schemas/common.py` 定义。应用工厂、服务入口、维护模块与迁移环境按需使用实现，资源创建和关闭仍由原有生命周期管理。配置模块保留原位，`utils/` 继续承担底层辅助职责。
 
 ## 后端职责与数据库
 
@@ -134,7 +139,16 @@ fullstack-starter/
 
 数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
 
-`create_app(settings)` 只装配应用。模块导入和 OpenAPI 导出不连接数据库、不创建日志、不要求前端产物存在。lifespan 检查前端产物和数据库版本，创建异步引擎与会话工厂，退出时 `await engine.dispose()`。
+`application.py` 按装配阶段拆成同文件函数：`create_app(settings)` 显式接收 Settings，创建本地 provider 与 FastAPI，保存应用级依赖并依次注册中间件、异常处理、API 路由、OpenAPI 配置与前端。单条中间件注册直接保留在工厂中，异常处理使用模块限定调用 `errors.register_error_handlers(application)`，随后装配 API、OpenAPI 与 SPA。
+
+| 函数                                     | 职责                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `lifespan(application)`                  | 从当前应用状态取得配置与 provider，检查前端/数据库，创建引擎及会话工厂并清理运行资源 |
+| `_register_api_routes(application)`      | 创建聚合路由，统一 `/api` 前缀和公共错误 Schema，按顺序注册 health 与 hello          |
+| `_configure_openapi(application)`        | 在该应用的 OpenAPI 中补充公开的 ClientSettings Schema                                |
+| `_mount_frontend(application, settings)` | 按配置挂载前端并维护保留路径，位于 API 注册之后                                      |
+
+配置、数据库会话工厂与 trace provider 绑定具体应用，不新增全局 Settings 或数据库/provider 单例；Loguru 沿用现有进程级配置，具体 HTTP 处理器仍位于 `routers/`。模块导入和 OpenAPI 导出不连接数据库、不创建日志、不要求前端产物存在。模块级 lifespan 保持原有清理顺序：await 引擎释放后解锁，再关闭 provider 并等待日志队列；启动失败或取消继续传播，OpenAPI CLI 的 provider 仍由导出路径显式关闭。
 
 SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用外键、有限锁等待和显式 BEGIN；日志模式、持久化级别和池容量来自配置。WAL 保留单写入者约束，异步驱动不会将 SQLite 变成多写入者数据库。
 
@@ -142,7 +156,7 @@ SQLite 完整性基线的依据见[数据库指南](database.md#sqlite-版本要
 
 初始迁移仅建立 Alembic 版本记录。建库与升级必须显式执行维护命令，正常启动不运行迁移或 `create_all()`。Alembic 的同步命令入口管理事件循环，通过 `AsyncConnection.run_sync()` 执行 DDL 桥接，不另建同步运行时引擎。已有数据的结构变更必须审查迁移，必要时使用 SQLite batch migration。
 
-迁移代码集中在 `backend/migrations/`：`operations.py` 管理 Alembic 配置、head 查询和带停服保护的升级；`env.py` 复用引擎构造并执行 DDL；`versions/` 保存历史；`development.py` 负责隔离临时库上的重放、生成与检查。运行时 `app/database.py` 通过 operations 查询期望版本，operations 不反向依赖引擎模块，避免循环依赖。开发命令不连接日常库，应用数据库升级仍需显式执行。
+迁移代码集中在 `backend/migrations/`：`operations.py` 管理 Alembic 配置、head 查询和带停服保护的升级；`env.py` 复用引擎构造并执行 DDL；`versions/` 保存历史；`development.py` 负责隔离临时库上的重放、生成与检查。运行时 `app/infra/database.py` 通过 operations 查询期望版本，operations 不反向依赖引擎模块，避免循环依赖。开发命令不连接日常库，应用数据库升级仍需显式执行。
 
 生成、审查、旧数据回归、迁移脚本能力及恢复边界统一见[数据库指南](database.md#迁移生成审查与验证)。测试中真实历史重放与合成机制验证分开，baseline 的空表断言只针对 `0001_baseline`。
 

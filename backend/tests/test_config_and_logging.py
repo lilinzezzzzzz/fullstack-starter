@@ -6,9 +6,9 @@ from fastapi.testclient import TestClient
 from loguru import logger
 from pydantic import ValidationError
 
+from app.application import create_app
 from app.config import PROJECT_ROOT, load_settings
-from app.logging_setup import configure_logging
-from app.main import create_app
+from app.infra.logging_setup import configure_logging
 from tests.helpers import read_config, response_trace_id, save_config, write_config
 
 

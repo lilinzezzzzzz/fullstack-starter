@@ -42,7 +42,7 @@ def foreground_service(
     output_file = config.with_suffix(".foreground.log")
     with output_file.open("w") as output:
         process = subprocess.Popen(
-            ["sh", str(PROJECT_ROOT / "entrypoints/service.sh"), "--config", str(config)],
+            ["sh", str(PROJECT_ROOT / "backend/entrypoints/service.sh"), "--config", str(config)],
             cwd=config.parent,
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -108,7 +108,7 @@ def test_foreground_service_ctrl_c_and_maintenance_lock(
                 str(PROJECT_ROOT / "backend"),
                 "python",
                 "-m",
-                "app.cli",
+                "entrypoints.cli",
                 "--config",
                 str(config),
                 "db-upgrade",

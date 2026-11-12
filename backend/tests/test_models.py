@@ -6,7 +6,7 @@ from alembic.migration import MigrationContext
 from sqlalchemy import CheckConstraint, Connection, Index, MetaData, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import create_database_engine
+from app.infra.database import create_database_engine
 from app.models import Base
 from tests.helpers import settings_for
 

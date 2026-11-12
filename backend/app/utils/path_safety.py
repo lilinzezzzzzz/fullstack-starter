@@ -10,7 +10,6 @@ from pathlib import Path
 SOURCE_DIRECTORIES = (
     "backend",
     "frontend",
-    "entrypoints",
     "scripts",
     "configs",
     "docs",
