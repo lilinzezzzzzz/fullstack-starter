@@ -52,7 +52,7 @@ def foreground_service(
             yield process, output_file
         finally:
             if process.poll() is None:
-                os.killpg(process.pid, signal.SIGTERM)
+                os.killpg(process.pid, signal.SIGINT)
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
@@ -76,14 +76,15 @@ def wait_for_service(process: subprocess.Popen[bytes], settings: Settings, outpu
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("console", [False, True], ids=["file", "file-and-console"])
 def test_foreground_service_ctrl_c_and_maintenance_lock(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, console: bool
 ) -> None:
     config = write_config(tmp_path / "configuration with spaces")
     data = read_config(config)
     data["server"]["port"] = unused_port()
     data["server"]["graceful_shutdown_seconds"] = 1
-    data["logging"]["console"] = True
+    data["logging"]["console"] = console
     save_config(config, data)
     settings = load_settings(config)
     upgrade_database(settings)
@@ -121,14 +122,21 @@ def test_foreground_service_ctrl_c_and_maintenance_lock(
         assert "in progress" in migration.stderr
         second = config.parent / "second.toml"
         data["server"]["port"] = unused_port()
+        data["logging"]["console"] = True
         save_config(second, data)
         with foreground_service(second) as (duplicate, duplicate_output):
             assert duplicate.wait(timeout=10) != 0
             assert "in progress" in duplicate_output.read_text()
         assert process.poll() is None
         os.killpg(process.pid, signal.SIGINT)
-        process.wait(timeout=10)
-    assert "Application shutdown complete" in output.read_text()
+        # uv 自身也收到进程组 SIGINT 时可返回 130；服务仍须完整关闭并写入日志。
+        assert process.wait(timeout=10) in (0, 130)
+    terminal = output.read_text()
+    assert "resource_tracker" not in terminal
+    assert "leaked semaphore" not in terminal
+    if console:
+        assert "Application shutdown complete" in terminal
+        assert "Finished server process" in terminal
     contents = (settings.logging.directory / settings.logging.filename).read_text()
     assert "4bf92f3577b34da6a3ce929d0e0e4736 | GET /api/v1/hello 200" in contents
     assert "Application shutdown complete" in contents

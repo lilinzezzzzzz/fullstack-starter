@@ -4,6 +4,16 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-13 E2E 退出的 semaphore 清理与日志收尾
+
+在 macOS、Python 3.14.7、Uvicorn 0.54.0、Loguru 0.7.3 下，先以原 E2E 入口复现：4 项 Chromium 流程通过，但退出时报告 8 个 semaphore，文件日志缺少 `Application shutdown complete` 和 `Finished server process`。对当前安装源码和独立服务进程的资源注册轨迹交叉检查：Loguru 的每个排队 sink 创建 8 个具名 semaphore；服务入口与 lifespan 两次配置共注册 16 个，重配时注销旧 sink 的 8 个。Uvicorn 优雅关闭后恢复并重新触发收到的信号，SIGTERM 默认终止解释器，入口 `finally` 未执行，剩余 8 个由 resource tracker 报警清理；SIGINT 对照中入口 `finally` 执行，16 个全部注销，关闭日志完整。仅调用 `logger.complete()` 排空队列不能代替 Python 的资源退出清理。
+
+将 [E2E 运行器](../frontend/scripts/run-e2e.mjs) 的 Playwright 服务停止信号改为 SIGINT；运行器中断和命令超时也先向自有子进程组发送 SIGINT，沿用原等待期限与 SIGKILL 兜底。未修改 Uvicorn 信号处理、服务入口、lifespan 或 Loguru 配置，未过滤警告。服务回归增加仅文件、文件加控制台两种模式，检查退出码、semaphore 警告缺失、请求及关闭日志完整、数据库锁释放。
+
+本机 Node.js 24.22.0、Corepack pnpm 9.12.2 下，使用完整独占临时 TOML 经 `pnpm test:e2e --config` 重新执行 TypeScript、临时生产构建与 4 项 Chromium 流程，页面阶段耗时 5.2 秒；退出无 semaphore 警告，最后两条关闭日志均落盘。完整后端 `pytest` 219 项通过（29.50 秒）；Ruff lint 与 53 个 Python 文件格式、修改脚本的 ESLint、脚本与设计文档的 Prettier 检查通过。本条新增历史记录单独格式检查通过，整份 history 的既有格式差异在 HEAD 同样存在，本次保留历史正文；本地文档路径、代码块与 Git diff 空白检查通过。直接向服务发送 SIGTERM 的原生语义保留；本次修复针对 E2E 收尾路径，强制终止仍不保证日志或资源清理。
+
+另外在独占 E2E 进入页面阶段后，分别向运行器发送 SIGINT 与 SIGTERM，两次均以 130 返回、保留诊断、完整写入服务关闭日志，且无 semaphore 警告。验证使用任务临时配置、数据库、日志、浏览器和构建目录，未启停日常服务。
+
 ## 2026-11-13 后端目录与应用装配提交前复核
 
 对照当前实现整体复核导入、entrypoints/infra/application 职责、项目创建器、测试、README、docs 及 6 份 AGENTS。旧命令和导入仅出现在历史说明或旧文件缺失断言中；统一后端规则中的应用级数据库/provider 与进程级 Loguru 边界。发现模板自身缺少服务入口时，动态源树扫描可能遗漏：分别删除临时模板的入口包文件、Python 服务入口和 Shell 脚本，3 项回归均先复现误报成功；补入显式必需清单后全部通过，失败只清理新目标并保留模板数据。

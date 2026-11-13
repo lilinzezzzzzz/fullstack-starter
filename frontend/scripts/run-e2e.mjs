@@ -26,7 +26,7 @@ const children = new Set();
 let interrupted = false;
 let passed = false;
 
-function stop(child, signal = 'SIGTERM') {
+function stop(child, signal = 'SIGINT') {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   try {
     process.kill(-child.pid, signal);
@@ -167,7 +167,8 @@ export default {
     reuseExistingServer: false,
     timeout: runtime.testing.command_timeout_seconds * 1000,
     gracefulShutdown: {
-      signal: 'SIGTERM',
+      // 与前台 Ctrl+C 一致，让 Uvicorn 返回后完成日志排空和 Python 资源清理。
+      signal: 'SIGINT',
       timeout: runtime.testing.termination_grace_seconds * 1000,
     },
   },
