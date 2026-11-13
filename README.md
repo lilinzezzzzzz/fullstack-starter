@@ -139,7 +139,7 @@ pnpm --dir frontend typecheck
 pnpm --dir frontend build
 ```
 
-按变更范围选择检查。Ruff 覆盖后端与项目创建器，`build` 包含 TypeScript 检查。格式整理使用对应的 `ruff format` 与 `pnpm --dir frontend format`，生成类型不交给 Prettier。
+按变更范围选择检查。Ruff 覆盖后端与项目创建器，`build` 包含 TypeScript 检查。`pnpm --dir frontend format:check` 统一检查前端文件、根 README、`docs/` 下全部 Markdown 和各级 `AGENTS.md`，新增子目录中的文档与规则自动纳入。格式整理使用对应的 `ruff format` 与 `pnpm --dir frontend format`，后者覆盖相同范围。Prettier 检查与整理均遵循 `frontend/.prettierignore` 与根 `.gitignore`，排除生成类型、锁文件、依赖、构建和私有运行产物。
 
 后端测试使用临时 TOML、日志和 SQLite；`integration` 测试需要本机监听与信号权限，受限环境可运行 `uv run --directory backend pytest -m 'not integration'`，但需另报未验证的真实启停。上面的 `build` 使用主 TOML 的输出位置；需要隔离验证构建时，使用下面的 E2E 入口，它也执行 TypeScript 检查与构建。
 

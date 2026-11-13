@@ -22,6 +22,8 @@
 
 从项目根目录运行，选择与改动相关的检查；`build` 包含 TypeScript 检查。
 
+`format:check` 与 `format` 共用检查/整理范围，除前端文件外，还包括根 README、`docs/` 下全部 Markdown 与各级 `AGENTS.md`；同时读取 `.prettierignore` 与根 `.gitignore`，排除生成类型、锁文件、依赖、构建和私有运行产物。
+
 ```bash
 pnpm --dir frontend format:check
 pnpm --dir frontend lint
