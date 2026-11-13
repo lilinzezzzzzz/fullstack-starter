@@ -4,6 +4,16 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-13 主 TOML 配置注释与定向验证
+
+提交 `4ecfe75` 为 [configs/app.toml](../configs/app.toml) 全部 100 个必填配置项补充独立中文注释，与 [Python 配置定义](../backend/app/config.py) 和[配置约定](configuration.md)对应，说明用途、单位、取值范围、零值含义、路径基准、重试条件及固定约束。分组注释补充文档开关依赖、浏览器配置的构建边界、日志固定策略和仅维护上下文的 telemetry 行为；`ClassVar` 固定日志策略与派生属性只作说明，没有新增 TOML 配置键。
+
+注释补充前后，TOML 解析得到的全部配置值与类型一致，所有非注释行逐字节不变，`load_settings()` 生成的 Settings 导出结果一致。逐项检查确认 100 个配置项均有独立注释；提交前再次核对暂存内容，仍只有注释变化，未修改字段、分组、赋值顺序、字面值或数组内容。
+
+本机 Python 3.14.7 下，从项目根目录运行 `uv run --directory backend --no-sync pytest tests/test_configuration_contract.py tests/test_project_creation.py`，使用独占临时 pytest 目录并禁用缓存，81 项通过，耗时 12.31 秒。验证覆盖配置必填性、类型与路径约束，以及带新注释的模板生成和配置重写；TOML 解析、配置加载与 `git diff --check` 均通过。
+
+本次仅补充主 TOML 注释，未重跑完整后端或 Chromium E2E，未启停日常服务，临时验证资源已清理。实现已作为单文件本地提交保存，未推送远程；本条补记上述已执行结果，保留此前历史正文及其验证范围。
+
 ## 2026-11-13 Prettier 根配置、配置项注释与提交后完整验证
 
 本轮改动已整理为两个本地提交：`7300c47` 包含日志模块与策略配置调整、`backend/app/config.py` 的配置项注释；`8cabcbe` 包含 Prettier 根配置迁移及配套的创建器、源码路径保护、测试和文档。以下完整验证基于 `8cabcbeada0ecab0dba2608a18db6adf2a856473`，覆盖两个提交的最终组合；验证开始及结束时 HEAD 均未变化，工作区干净。
