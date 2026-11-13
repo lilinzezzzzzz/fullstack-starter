@@ -1,134 +1,240 @@
-# 所有应用配置项均为必填；缺失字段不会使用代码或环境变量中的默认值。
-# 相对路径以项目根目录为基准解析，而非本文件所在目录。
+# 所有应用配置项均为必填；缺失、未知键和不匹配类型明确失败，不读取环境变量或回退取值。
+# 本文件中的数值是显式选择，不是字段缺失时的默认值；false、0 和空列表保留其真实含义。
+# 浮点时间必须有限，不能使用 inf 或 nan。
+# 相对路径以项目根目录为基准解析，而非本文件所在目录，也支持绝对路径。
+# 修改服务端参数需重启服务；浏览器可见配置变更需重新构建前端。
+# 私有 SQLite 数据目录；导入应用或读取配置不会自动建库，建库与升级走显式 CLI。
 data_dir = ".data"
+# 数据库文件名，相对于 data_dir；只能是文件名，不能包含目录或路径分隔符。
 database_filename = "app.sqlite3"
+# 显式备份操作的输出目录；修改 data_dir 时需单独核对该路径。
 backup_directory = ".data/backups"
+# 前端构建产物及公开托管目录，不得与源码、私有数据或日志双向重叠。
 frontend_dir = "frontend/dist"
+# 是否由 FastAPI 托管前端；关闭后仍提供 API。
 serve_frontend = true
-# 仅允许自动清理脚手架管理的 frontend/dist 目录。
+# 是否在构建前清空输出；只允许实际的 frontend/dist，其他输出位置必须为 false。
 frontend_clean_output = true
+# SQLite 等待数据库锁的期限，秒；必须大于 0，最多 60。
 sqlite_timeout_seconds = 5.0
+# Host 主机名白名单，不含端口；空列表拒绝所有主机。
 allowed_hosts = ["127.0.0.1", "localhost", "::1"]
+# 额外允许的 Origin（协议/主机/端口），同源无需列入。
 allowed_origins = [
   "http://127.0.0.1:18001", "http://localhost:18001",
   "http://127.0.0.1:5173", "http://localhost:5173",
 ]
 
 [application]
+# 应用标识与文档入口；关闭文档后仍需提供各路径，防止其落入 SPA 回退。
+# 非空应用标题，同时提供给 OpenAPI、前端和 telemetry Resource。
 title = "fullstack-starter"
+# 非空应用版本，同时提供给 OpenAPI、前端和 telemetry Resource。
 version = "0.1.0"
+# 是否提供 Swagger UI；启用时要求 openapi_enabled=true。
 docs_enabled = true
+# 是否提供 ReDoc；启用时要求 openapi_enabled=true。
 redoc_enabled = true
+# 是否提供 OpenAPI JSON；关闭时必须同时关闭两个交互文档入口。
 openapi_enabled = true
+# Swagger UI 路径，以 / 开头；关闭后仍必填并作为保留路径。
 docs_path = "/docs"
+# ReDoc 路径，以 / 开头；关闭后仍必填并作为保留路径。
 redoc_path = "/redoc"
+# OpenAPI JSON 路径，以 / 开头；关闭后仍必填并作为保留路径。
 openapi_path = "/openapi.json"
 
 [server]
+# 前台 Uvicorn 单 worker 服务；重启和停止沿用原生信号处理。
+# Uvicorn 监听地址；本地使用通常绑定回环地址。
 host = "127.0.0.1"
+# API 监听端口，范围 1–65535；端口占用时启动失败。
 port = 18001
+# 固定单 worker，保持单机 SQLite 与进程级日志的运行边界。
 workers = 1
+# 优雅关闭时等待在途请求/任务结束的期限，秒，必须大于 0。
 graceful_shutdown_seconds = 10.0
+# 空闲 HTTP 连接等待下一请求的秒数；0 不等待。
 keep_alive_seconds = 5
+# 监听套接字的待接入连接队列容量，必须大于 0。
 backlog = 2048
-# 显式设为 0 表示不限制并发数。
+# Uvicorn 并发连接/任务上限；0 转为不设上限。
 concurrency_limit = 0
 
 [database]
+# SQLite PRAGMA 与 SQLAlchemy 异步连接池参数，不控制是否自动执行迁移。
+# SQLite 日志模式，支持 WAL 或 DELETE，通过连接 PRAGMA 设置。
 journal_mode = "WAL"
-# SQLite 持久性策略，与 ORM 调用采用同步还是异步方式无关。
+# SQLite 持久性级别，支持 NORMAL、FULL、EXTRA，与同步/异步 ORM 调用无关。
 synchronous = "FULL"
+# SQLAlchemy 连接池的常驻连接容量，必须大于 0。
 pool_size = 5
+# 常驻容量之外可临时增加的连接数；0 禁用溢出连接。
 max_overflow = 10
+# 连接池耗尽后等待可用连接的期限，秒，必须大于 0。
 pool_timeout_seconds = 30.0
 
 [logging]
+# 应用、请求与 Uvicorn 共用 Loguru，文件日志使用 UTF-8 追加写入。
+# 固定的 backtrace=false、diagnose=false、enqueue=true、colorize=false、catch=true
+# 由 LoggingSettings 的 ClassVar 维护，不是 TOML 字段，不要在本节新增同名键。
+# 私有日志目录；不得与源码或公开前端产物重叠。
 directory = "logs"
+# 文件日志名称，相对于 logging.directory；只能是文件名，不能包含目录。
 filename = "app.log"
+# 文件和控制台的最低日志等级，支持 DEBUG、INFO、WARNING、ERROR、CRITICAL。
 level = "INFO"
+# 非空 Loguru 消息模板；extra[trace_id] 关联请求，非请求日志的 trace_id 使用 -。
 format = "{time:YYYY-MM-DD HH:mm:ss.SSS Z} | {level: <8} | {extra[trace_id]} | {message}"
+# Loguru 文件轮转条件，支持大小或时间表达式，例如 "10 MB"、"1 day"。
 rotation = "10 MB"
-# 显式设为 0 表示保留所有轮转日志文件；不使用 TOML 空值或隐式回退。
+# 轮转日志保留天数；0 表示保留所有轮转文件，不用空值或隐式回退。
 retention_days = 0
+# 轮转文件压缩格式，仅支持 none、gz、zip；none 派生为 Loguru 使用的 None。
 compression = "none"
+# 是否将日志记录序列化为 JSON。
 serialize = false
+# 是否在文件日志之外，同时写入标准错误输出。
 console = false
+# 是否记录请求方法、路径、状态码、耗时及当前 trace 上下文。
 request_logging = true
 
 [telemetry]
-# 仅维护请求上下文；下列关闭项由校验器约束，不能通过配置开启采集或导出。
+# 仅维护原生请求上下文，不启用采集或自动导出；不符合下列固定约束时校验失败。
+# 必须为 true，仅用于原生请求 trace 上下文，不代表开启采集。
 tracing = true
+# 必须为 false，禁用请求指标采集。
 metrics = false
+# 必须为 false，禁用 OTel 日志；应用日志继续使用 Loguru。
 logs = false
+# 必须为 false，不额外创建操作级 span。
 operation_spans = false
+# 必须为 false，不自动装配 telemetry 导出组件。
 auto_configure = false
+# 固定不采样，仍保留有效的 trace/span 标识。
 sampler = "always_off"
+# 由 SDK 随机生成 trace/span 标识。
 id_generator = "random"
+# 必须为 false，避免 SDK 退化成无有效上下文的 NoOp。
 sdk_disabled = false
+# 必须为 false，关闭 SDK 自身指标。
 internal_metrics_enabled = false
-# provider 由应用 lifespan 关闭，不注册进程退出钩子。
+# 必须为 false，不注册进程退出钩子；provider 由 lifespan 或 OpenAPI CLI 显式关闭。
 shutdown_on_exit = false
+# 使用 contextvars 隔离并发请求的上下文。
 context = "contextvars_context"
+# 仅接受 W3C tracecontext 传播格式。
 propagators = "tracecontext"
+# FastAPI 原生 telemetry 用于 HTTP 方法归类的非空大写方法列表。
 known_methods = ["CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "QUERY", "TRACE"]
 
 [telemetry.span_limits]
-# 显式传入全部 SDK 限制，避免读取 OTEL_* 限制或隐式使用 SDK 默认值。
+# 显式传入全部八项 SDK 限制，避免读取 OTEL_* 限制或使用 SDK 默认值。
+# 当前不采集，随附值均为 0；这是容量/长度为零，不是无限制。
+# 通用属性数量上限；0 不保留属性。
 max_attributes = 0
+# 每个 span 的事件数量上限；0 不保留事件。
 max_events = 0
+# 每个 span 的链接数量上限；0 不保留链接。
 max_links = 0
+# span 属性数量上限，覆盖通用数量限制。
 max_span_attributes = 0
+# 单个事件的属性数量上限。
 max_event_attributes = 0
+# 单个链接的属性数量上限。
 max_link_attributes = 0
+# 通用字符串属性长度上限，字符数。
 max_attribute_length = 0
+# span 字符串属性长度上限，字符数。
 max_span_attribute_length = 0
 
 [vite]
+# 可选 Vite 开发服务器；使用该模式时，后端 serve_frontend 可显式设为 false。
+# 可选 Vite 开发服务器的监听地址。
 host = "127.0.0.1"
+# Vite 开发端口，范围 1–65535，与 API 监听端口分别配置。
 port = 5173
+# /api 开发代理的后端 URL；修改 API 监听端口后需同步核对。
 proxy_target = "http://127.0.0.1:18001"
+# 端口占用时直接失败，禁止自动改用其他端口。
 strict_port = true
+# 是否将代理请求的 Host 改为后端目标的主机。
 change_origin = true
 
-# 仅将本节配置及应用标题、版本注入浏览器构建产物。
-# 修改这些值后需要重新构建前端。
 [client]
+# 只有本节与 application 的标题、版本进入浏览器构建产物，修改后需重新构建。
+# theme_* 仅影响 Ant Design 组件，不覆盖页面品牌、全局 CSS 字体或布局。
+# 单次 API 请求超时，秒，必须大于 0。
 request_timeout_seconds = 10.0
+# 查询保持新鲜的秒数；0 表示立即过期。
 query_stale_seconds = 30.0
+# 无订阅查询的缓存保留秒数；0 不保留闲置缓存。
 query_cache_seconds = 300.0
+# 查询失败后的最大重试次数；0 不重试。
 query_retry_attempts = 1
+# 查询重试间隔，秒；0 不额外等待。
 query_retry_delay_seconds = 1.0
+# 允许查询重试的最低 HTTP 错误状态码，范围 400–599。
 retry_min_status = 500
+# 是否允许对网络错误或请求超时进行查询重试。
 retry_network_errors = true
+# 页面重新获得焦点时，是否重新请求过期查询。
 refetch_on_window_focus = false
+# 查询组件挂载时，是否重新请求过期查询。
 refetch_on_mount = true
+# 网络恢复连接时，是否重新请求过期查询。
 refetch_on_reconnect = true
-# 在后续项目建立幂等性契约之前，保持禁用写操作重试。
+# 固定禁用写操作重试，避免未建立幂等契约时重复写入。
 mutation_retry_attempts = 0
+# Ant Design 组件六位十六进制主色，例如 #14675b，不控制页面全部视觉样式。
 theme_primary_color = "#14675b"
+# Ant Design 组件基础圆角，非负像素值。
 theme_border_radius = 10
+# Ant Design 组件基础字号，像素，必须大于 0。
 theme_font_size = 16
+# 非空的 Ant Design 组件字体，不覆盖全局 CSS 字体。
 theme_font_family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 
 [testing]
+# 隔离验证使用的资源与预算，禁止复用日常数据库、日志或前端产物。
+# 本节超时和退出等待期限须大于 0，仅 action_timeout_seconds 允许用 0 禁用单次操作超时。
+# E2E/迁移验证的临时父目录，子目录由工具独占创建；不能位于源码或公开输出内。
 temporary_directory = "/tmp"
+# 隔离 E2E 服务的监听及访问地址。
 host = "127.0.0.1"
+# 验证子进程优雅退出的等待期限，秒；超时后运行器对自有进程使用 SIGKILL 兜底。
 termination_grace_seconds = 20.0
+# 验证入口中单个构建/CLI 等命令的执行期限，秒。
 command_timeout_seconds = 120.0
+# E2E 成功后是否保留产物；失败时始终保留诊断。
 keep_artifacts = false
+# Playwright 浏览器种类，支持 chromium、firefox、webkit，需预先安装匹配版本。
 browser = "chromium"
+# 常规浏览器视口宽度，正整数像素值。
 viewport_width = 1280
+# 常规浏览器视口高度，正整数像素值。
 viewport_height = 800
+# 窄屏测试视口宽度，正整数像素值。
 mobile_width = 390
+# 窄屏测试视口高度，正整数像素值。
 mobile_height = 844
+# Playwright 并行 worker 数，正整数，与 API 单 worker 无关。
 workers = 1
+# 测试失败后的重试次数；0 不重试。
 retries = 0
+# 单个测试用例的执行期限，秒。
 test_timeout_seconds = 30.0
+# Playwright 自动重试断言的等待期限，秒。
 expect_timeout_seconds = 5.0
-# 显式设为 0 表示禁用单次操作超时。
+# 单次浏览器操作期限，秒；0 表示禁用此超时。
 action_timeout_seconds = 0.0
+# 浏览器导航的等待期限，秒。
 navigation_timeout_seconds = 30.0
+# trace 录制策略：off、on、retain-on-failure 或 on-first-retry。
 trace = "retain-on-failure"
+# Playwright 截图策略：off、on 或 only-on-failure。
 screenshot = "only-on-failure"
+# 是否允许同一文件内的测试并行执行，仍受 workers 限制。
 fully_parallel = false
+# Playwright 终端结果报告格式：list、dot 或 line。
 reporter = "list"
