@@ -4,6 +4,25 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-13 文档与分层规则修正后的完整回归
+
+在文档一致性修正 `9077790` 及其记录补记完成后，基于本地提交 `f8192e8ee374aebf13a910a8a17793367c39efca` 重新运行完整验证。开始和结束时 HEAD 均未变化，工作区干净；本条记录后端与真实浏览器回归，区别于前一轮仅做文档、配置/OpenAPI 契约及静态工具检查的范围。
+
+环境为 macOS、Python 3.14.7、Node.js 24.22.0、Corepack pnpm 9.12.2，复用已安装的锁定依赖，未升级工具链。所有入口命令从项目根目录运行；后端测试使用独占临时 pytest 目录并禁用 pytest 缓存，E2E 经完整临时 TOML 选择 Chromium，构建、数据库、备份、日志与浏览器临时文件均位于本轮独占目录，临时父路径包含空格和单引号。
+
+| 检查入口或范围                                                       | 观察结果                                                                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `uv run --directory backend --no-sync pytest`                        | 完整后端 237 项通过，38.53 秒，包含真实服务启停与项目创建器回归                                                          |
+| Ruff lint 与格式检查，覆盖 `backend/` 和 `scripts/create_project.py` | 通过，53 个 Python 文件格式符合配置                                                                                      |
+| `pnpm --dir frontend format:check`                                   | 统一检查通过，覆盖前端文件、README、docs 和各级 AGENTS                                                                   |
+| `pnpm --dir frontend lint`                                           | ESLint 通过                                                                                                              |
+| `pnpm --dir frontend api:types:check`                                | API 生成类型与当前 Schema 一致，未改写生成文件                                                                           |
+| `pnpm --dir frontend test:e2e --config <独占临时TOML>`               | TypeScript 检查、临时生产构建及 4 项 Chromium 页面流程通过，浏览器阶段 5.6 秒                                            |
+| 文档与指令                                                           | 13 份文档的 113 处本地链接、25 处标题锚点及 21 段 Shell 示例检查通过                                                     |
+| 正常关闭与日志                                                       | 未出现 multiprocessing semaphore 清理警告；文件日志完整包含 `Application shutdown complete` 与 `Finished server process` |
+
+测试服务 PID 已退出，按任务临时路径及其解析路径检查未发现本次运行器或浏览器残留。验证前后，108 个跟踪文件及 11 个已有运行文件的哈希保持一致，未启停日常服务；`git diff --check` 通过，所有本轮临时资源已清理，未推送远程。上述验证范围内未发现文档与指令修正引入的回归；本条补记已执行结果，保留此前各条历史的原始证据范围。
+
 ## 2026-11-13 文档与分层规则一致性复核
 
 提交 `9077790` 对照当前实现复核 README、docs 与 6 份各级 AGENTS，共 13 份文档，修正其中 7 个文件。设计文档补齐 ReDoc 入口；配置文档明确 TOML 说明与 Python 校验定义的职责，补入根 Prettier 文件的源码路径保护；创建指南纠正示例测试按应用标题断言的旧表述，说明 Hello 欢迎语不随项目名变化，并精简重复的生成器边界说明。
