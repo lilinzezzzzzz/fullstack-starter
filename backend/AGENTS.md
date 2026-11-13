@@ -26,7 +26,8 @@
 - `app/telemetry/environment.py` 仅在应用构建时桥接配置文档中的 TOML 白名单，请求期间不改环境；`provider.py` 显式创建本地 SDK provider、Resource 和 SpanLimits，不替换全局 tracer/meter/logger provider。
 - 原生 telemetry 只维护上下文：`ALWAYS_OFF`，metrics、OTel logs、operation spans、内部指标与自动导出关闭，不注册采集/导出 processor 或 exporter。使用官方 propagator 解析与注入 `traceparent`，不自行生成 UUID trace ID 或叠加解析规则。
 - lifespan 在正常退出和启动失败时关闭 provider；OpenAPI CLI 没有 lifespan，必须显式关闭 provider。
-- Loguru 保持 `enqueue=True`、`backtrace=False`、`diagnose=False`，标准日志与 Uvicorn 统一桥接；lifespan 和服务入口退出时等待日志队列完成。错误体、请求日志和响应 trace 上下文保持关联，内部异常细节仅进入日志。
+- Loguru 保持 `enqueue=True`、`backtrace=False`、`diagnose=False`，标准日志与 Uvicorn 统一桥接。固定策略集中在 `LoggingSettings` 的 `ClassVar`，不作为 TOML 字段或配置导出项；派生属性只为调用方转换值，边界见[配置约定](../docs/configuration.md#已收拢的运行参数)。`infra/logging.py` 使用 `std_logging` 引用标准库模块，与 Loguru 的 `logger` 实例区分。
+- 正常 Ctrl+C 关闭时，lifespan 清理资源并等待日志，服务入口再排空 Uvicorn 最后的关闭日志；保留原生信号行为，其他信号及强制终止的限制见[进程约定](../docs/design.md#配置访问与进程边界)。错误体、请求日志和响应 trace 上下文保持关联，内部异常细节仅进入日志。
 
 ## 验证
 

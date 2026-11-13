@@ -25,7 +25,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 | `client`                | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family`              | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题                    |
 | `testing`               | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物        |
 
-具体取值、单位与注释以主 TOML 文件为准。提供在文件里的数值是操作者选择的值，不是缺失时的默认值。
+随附取值、单位和逐项说明见[主 TOML](../configs/app.toml)，字段类型、范围与跨字段约束由 [backend/app/config.py](../backend/app/config.py) 定义并执行校验，三者同步维护。TOML 中提供的数值是操作者选择的值，不是缺失时的默认值；注释不参与解析，也不产生额外配置项。
 
 `ApplicationSettings` 提供只读派生属性 `docs_url`、`redoc_url`、`openapi_url`，将各自必填的启用开关和路径转换为有效路径或 `None`，应用工厂直接读取。它们不是新增 TOML 字段，不进入配置导出；关闭功能仍需提供原始 `*_path`，供前端保留这些路径并返回真实 404。OpenAPI 与交互文档开关的关联校验保持不变，不允许关闭 OpenAPI 时启用 Swagger 或 ReDoc。
 
@@ -49,7 +49,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 - 数据、备份与日志是私有目录，不得与受保护源码、项目根的依赖/工具缓存目录或公开输出双向重叠。默认 `.data/`、`.data/backups/` 与 `logs/` 是允许的私有路径，私有目录之间不统一禁止包含关系。
 - 公开输出额外避开根目录遗留的 `data/`、`.data/`、`logs/`、`.run/`，以及 `.venv/`、`node_modules/`、`.pytest_cache/`、`.ruff_cache/`。`frontend/` 内只允许 `frontend/dist/` 子树作为输出位置。
-- 源码保护覆盖 `backend/`（包含 Shell 与 Python 入口）、`frontend/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
+- 源码保护覆盖 `backend/`（包含 Shell 与 Python 入口）、`frontend/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；根 `.prettierrc.toml` 和 `.prettierignore` 同样受保护，不能作为输出或私有运行目录。完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
 - 自动清空只允许实际的 `frontend/dist`，其子目录或指向外部的符号链接不能启用自动清空。其他合法输出位置需显式设置 `frontend_clean_output = false`。
 
 数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。

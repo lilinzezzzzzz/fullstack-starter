@@ -12,7 +12,7 @@
 
 ## 配置、构建与生成文件
 
-- Node 版本遵循根 `.node-version`，pnpm 版本遵循 `package.json` 的 packageManager/engines；保留 `pnpm-lock.yaml`，不用 npm/yarn 替换。前端命令依赖已安装的后端环境。
+- Node 版本遵循根 `.node-version`，pnpm 版本遵循 `package.json` 的 packageManager/engines；保留 `pnpm-lock.yaml`，不用 npm/yarn 替换。Vite 开发/构建、API 类型生成/检查和 E2E 需要已安装的后端环境；Prettier、ESLint 与 TypeScript 静态检查使用前端工具链。
 - `scripts/project-config.mjs` 调用 Python CLI 完整校验 TOML；Vite、Playwright 与类型工具共用该入口。不能增加 `VITE_*`、`import.meta.env` 或独立 TOML 解析作为应用参数来源。
 - 浏览器只注入 `client` 和应用标题/版本，不注入完整配置、服务端路径或访问允许列表。修改公开配置要同步后端 Schema、构建注入、生成类型与配置文档。
 - `src/types/api.generated.d.ts` 通过 `pnpm --dir frontend api:types` 生成；禁止手工编辑或用 Prettier 改写。`api:types:check` 发现过期应失败且不改写文件。
@@ -33,5 +33,5 @@ pnpm --dir frontend test:e2e
 ```
 
 - 构建与 E2E 的完整命令和配置选择见 [README](../README.md#接口类型与验证)。页面流程只用 `test:e2e` 入口，不直接执行 Playwright test 绕过隔离运行器。
-- E2E 使用独占临时 TOML、数据库、日志、构建目录和服务端口，经 sh 入口启动自有服务，由 Playwright 等待健康检查并优雅关闭；不复用日常服务。
+- E2E 使用独占临时 TOML、数据库、日志、构建目录和服务端口，经 sh 入口启动自有服务，由 Playwright 等待健康检查并以 SIGINT 沿用 Uvicorn 原生 Ctrl+C 路径正常关闭；核对末尾日志和自有进程退出，不复用日常服务。
 - Chromium 为当前自动化基线，安装匹配的浏览器后再运行；尊重 screenshot/trace/keep_artifacts 配置。成功且 keep_artifacts=false 时清理，成功且为 true 时保留产物，失败时始终保留诊断并报告路径。未运行浏览器测试时，不把类型、lint 或构建通过表述为页面行为通过。

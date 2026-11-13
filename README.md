@@ -98,7 +98,7 @@ sh backend/entrypoints/service.sh --config configs/app.local.toml
 uv run --directory backend python -m entrypoints.cli --config configs/app.local.toml db-check
 ```
 
-运行服务与数据库升级共用数据库旁的文件锁，运行期间不要删除锁文件。随附数据库为 `.data/app.sqlite3`，日志为 `logs/app.log`；Loguru 队列在退出时等待写完。自定义运行路径后检查 `.gitignore`，避免提交数据、备份、日志或私有配置。
+运行服务与数据库升级共用数据库旁的文件锁，运行期间不要删除锁文件。随附数据库为 `.data/app.sqlite3`，日志为 `logs/app.log`；正常 Ctrl+C 关闭时等待 Loguru 队列写完。其他信号和强制终止的日志边界见[进程约定](docs/design.md#配置访问与进程边界)。自定义运行路径后检查 `.gitignore`，避免提交数据、备份、日志或私有配置。
 
 ## 可选 Vite 开发
 

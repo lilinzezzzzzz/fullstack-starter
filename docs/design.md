@@ -170,12 +170,12 @@ SQLite 完整性基线的依据见[数据库指南](database.md#sqlite-版本要
 
 TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取消和错误解析；`useWelcome` 组合 Hello 与健康检查，页面和连接组件呈现加载、失败、成功及重试状态。保持现有 Hello 视觉设计，支持键盘操作和窄屏使用，不增加全局业务状态库。
 
-| Method / 路径            | 契约                                  |
-| ------------------------ | ------------------------------------- |
-| `GET /api/v1/hello`      | 固定返回 `{"message": "Hello World"}` |
-| `GET /api/health`        | 检查服务和真实 SQLite 连接            |
-| `/`、`/welcome`          | Hello 欢迎页，可直接访问和刷新        |
-| `/docs`、`/openapi.json` | 文档与 Schema；开关和路径来自配置     |
+| Method / 路径                      | 契约                                  |
+| ---------------------------------- | ------------------------------------- |
+| `GET /api/v1/hello`                | 固定返回 `{"message": "Hello World"}` |
+| `GET /api/health`                  | 检查服务和真实 SQLite 连接            |
+| `/`、`/welcome`                    | Hello 欢迎页，可直接访问和刷新        |
+| `/docs`、`/redoc`、`/openapi.json` | 文档与 Schema；开关和路径来自配置     |
 
 成功响应直接返回 Schema；错误统一为 `code`、`message`、`details`、`trace_id`。未预期的内部细节进入日志，不返回给浏览器。未知 API 和缺失静态资源返回真实 404；仅页面导航可回退到 SPA HTML。查询按配置有限重试，写请求重试次数必须显式配置为 0。
 
