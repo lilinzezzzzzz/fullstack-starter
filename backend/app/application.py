@@ -10,7 +10,7 @@ from app.config import ClientSettings, Settings
 from app.infra import errors
 from app.infra.database import check_database_revision, create_database_engine
 from app.infra.frontend import FrontendFiles, check_frontend_directory
-from app.infra.logging_setup import configure_logging
+from app.infra.logging import configure_logging
 from app.infra.middleware import RequestMiddleware
 from app.routers import health, hello
 from app.schemas.common import ErrorResponse

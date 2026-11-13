@@ -85,7 +85,8 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert (target / "backend/app/infra/database.py").is_file()
     assert (target / "backend/app/infra/errors.py").is_file()
     assert (target / "backend/app/infra/frontend.py").is_file()
-    assert (target / "backend/app/infra/logging_setup.py").is_file()
+    assert (target / "backend/app/infra/logging.py").is_file()
+    assert not (target / "backend/app/infra/logging_setup.py").exists()
     assert (target / "backend/app/infra/middleware.py").is_file()
     assert not (target / "backend/app/errors.py").exists()
     assert not (target / "backend/app/middleware.py").exists()
@@ -414,7 +415,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "/backend/app/infra/database.py",
         "/backend/app/infra/errors.py",
         "/backend/app/infra/frontend.py",
-        "/backend/app/infra/logging_setup.py",
+        "/backend/app/infra/logging.py",
         "/backend/app/infra/middleware.py",
         "/backend/entrypoints/service.py",
         "/backend/entrypoints/service.sh",
@@ -437,7 +438,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/database.py",
         "backend/app/infra/errors.py",
         "backend/app/infra/frontend.py",
-        "backend/app/infra/logging_setup.py",
+        "backend/app/infra/logging.py",
         "backend/app/infra/middleware.py",
         "backend/entrypoints/service.py",
         "backend/entrypoints/service.sh",
@@ -452,7 +453,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/database.py",
         "backend/app/infra/errors.py",
         "backend/app/infra/frontend.py",
-        "backend/app/infra/logging_setup.py",
+        "backend/app/infra/logging.py",
         "backend/app/infra/middleware.py",
         "backend/entrypoints/service.py",
         "backend/entrypoints/service.sh",
@@ -465,12 +466,13 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
 @pytest.mark.parametrize(
     "missing_file",
     [
+        "backend/app/infra/logging.py",
         "backend/entrypoints/__init__.py",
         "backend/entrypoints/service.py",
         "backend/entrypoints/service.sh",
     ],
 )
-def test_creator_rejects_missing_service_source_without_changing_template_data(
+def test_creator_rejects_missing_required_source_without_changing_template_data(
     tmp_path: Path, missing_file: str
 ) -> None:
     template = tmp_path / "template"

@@ -4,6 +4,16 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-13 日志基础设施模块命名统一
+
+将 `backend/app/infra/logging_setup.py` 重命名为 `backend/app/infra/logging.py`，标准库 `logging` 使用 `std_logging` 别名，Loguru 实例仍名为 `logger`。应用工厂、服务入口、日志测试、项目创建器必需文件清单及生成回归同步新路径；生成副本不保留旧模块，排除或删除新模块时均拒绝生成并只清理本次目标。当前设计更新模块职责，旧历史描述保留，仅修正现址链接。
+
+将新模块的别名和调用方的模块路径归一化后，AST 与改名前一致，完整 OpenAPI JSON 对比一致。`configure_logging()` 的接口、队列、文件与控制台输出、Uvicorn 标准日志桥接和退出排空顺序保持不变；infra 包入口仍不初始化资源。实际生成副本中的新模块引用标准库 `logging`，OpenAPI 导出正常，且不创建数据库或日志。
+
+本机 Python 3.14.7 下，日志、创建器和真实服务启停定向测试 39 项通过，完整后端测试 220 项通过（32.69 秒），包括仅文件/文件加控制台的关闭日志、日志去重与 trace 关联、数据库锁释放及缺失新日志模块的回归。Node.js 24.22.0、Corepack pnpm 9.12.2 下，隔离 E2E 完成 TypeScript、临时生产构建及 4 项 Chromium 流程（页面阶段 5.4 秒），退出无 semaphore 警告，`Application shutdown complete` 与 `Finished server process` 均写入文件。Ruff lint、53 个 Python 文件格式及统一 Prettier 检查通过。
+
+验证使用独占临时配置、SQLite、日志、浏览器及构建目录；日常数据、日志、前端产物、主 TOML 和锁文件共 13 个文件哈希不变，未启停日常服务。
+
 ## 2026-11-13 E2E 退出的 semaphore 清理与日志收尾
 
 在 macOS、Python 3.14.7、Uvicorn 0.54.0、Loguru 0.7.3 下，先以原 E2E 入口复现：4 项 Chromium 流程通过，但退出时报告 8 个 semaphore，文件日志缺少 `Application shutdown complete` 和 `Finished server process`。对当前安装源码和独立服务进程的资源注册轨迹交叉检查：Loguru 的每个排队 sink 创建 8 个具名 semaphore；服务入口与 lifespan 两次配置共注册 16 个，重配时注销旧 sink 的 8 个。Uvicorn 优雅关闭后恢复并重新触发收到的信号，SIGTERM 默认终止解释器，入口 `finally` 未执行，剩余 8 个由 resource tracker 报警清理；SIGINT 对照中入口 `finally` 执行，16 个全部注销，关闭日志完整。仅调用 `logger.complete()` 排空队列不能代替 Python 的资源退出清理。
@@ -393,7 +403,7 @@ FastAPI 原生 OpenTelemetry 的五项开关显式关闭，依赖下限调整为
 
 ## 2026-10-25 日志初始化模块命名
 
-将 `backend/app/logging_config.py` 重命名为 `backend/app/logging_setup.py`（现址：[backend/app/infra/logging_setup.py](../backend/app/infra/logging_setup.py)），同步应用工厂、服务控制器和测试导入，以及当前设计中的目录名称。`InterceptHandler` 和 `configure_logging` 的实现保持不变。
+将 `backend/app/logging_config.py` 重命名为 `backend/app/logging_setup.py`（现址：[backend/app/infra/logging.py](../backend/app/infra/logging.py)），同步应用工厂、服务控制器和测试导入，以及当前设计中的目录名称。`InterceptHandler` 和 `configure_logging` 的实现保持不变。
 
 macOS 本地完整后端测试 86 项通过，包含日志桥接去重、请求标识和真实 sh/PID 启停。Ruff lint、36 个 Python 文件格式检查及 API 类型一致性检查通过。测试使用临时配置、数据库、日志和 PID；日常服务保持停止。
 

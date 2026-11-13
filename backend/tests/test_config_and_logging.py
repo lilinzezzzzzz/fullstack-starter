@@ -1,4 +1,4 @@
-import logging
+import logging as std_logging
 from pathlib import Path
 
 import pytest
@@ -7,8 +7,8 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.application import create_app
-from app.config import PROJECT_ROOT, load_settings
-from app.infra.logging_setup import configure_logging
+from app.config import PROJECT_ROOT, LoggingSettings, load_settings
+from app.infra.logging import configure_logging
 from tests.helpers import read_config, response_trace_id, save_config, write_config
 
 
@@ -58,11 +58,29 @@ def test_missing_config_has_no_environment_fallback(tmp_path: Path) -> None:
         load_settings(tmp_path / "missing.toml")
 
 
+@pytest.mark.parametrize("option", ["backtrace", "diagnose", "enqueue", "colorize", "catch"])
+def test_fixed_logging_options_are_not_external_configuration(tmp_path: Path, option: str) -> None:
+    config = write_config(tmp_path)
+    settings = load_settings(config)
+    assert option not in settings.logging.model_dump(mode="json")
+    assert option not in LoggingSettings.model_json_schema()["properties"]
+
+    raw = read_config(config)
+    raw["logging"][option] = not getattr(settings.logging, option)
+    save_config(config, raw)
+    with pytest.raises(ValidationError) as error:
+        load_settings(config)
+    assert any(
+        item["type"] == "extra_forbidden" and item["loc"] == ("logging", option)
+        for item in error.value.errors()
+    )
+
+
 def test_loguru_file_and_uvicorn_bridge_do_not_duplicate(settings) -> None:
     configure_logging(settings.logging)
     configure_logging(settings.logging)
     logger.bind(trace_id="trace-probe").info("loguru-probe")
-    logging.getLogger("uvicorn.error").info("uvicorn-probe")
+    std_logging.getLogger("uvicorn.error").info("uvicorn-probe")
     logger.complete()
     contents = (settings.logging.directory / settings.logging.filename).read_text()
     assert contents.count("loguru-probe") == 1

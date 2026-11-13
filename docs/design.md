@@ -71,7 +71,7 @@ fullstack-starter/
 │   │   │   ├── database.py           # 异步引擎、会话依赖和版本检查
 │   │   │   ├── errors.py             # 标准错误响应与异常处理器
 │   │   │   ├── frontend.py           # 静态托管与 SPA 回退边界
-│   │   │   ├── logging_setup.py      # 日志初始化与 Uvicorn 桥接
+│   │   │   ├── logging.py            # 日志配置与 Uvicorn 桥接
 │   │   │   └── middleware.py         # ASGI 访问控制、trace 与请求日志
 │   │   ├── routers/                  # hello.py、health.py
 │   │   ├── services/                 # hello.py 业务类与同文件组装工厂
@@ -201,7 +201,7 @@ FastAPI 原生 telemetry 使用应用显式创建的本地 SDK `TracerProvider` 
 
 E2E 由 Playwright 向自有服务进程组发送 SIGINT，沿用前台 Ctrl+C 的原生关闭路径，使服务入口的日志排空与 Python 退出清理完成。运行器收到 SIGINT/SIGTERM 或命令超时时，也先向自有子进程组发送 SIGINT，保留既有等待期限与 SIGKILL 兜底。当前 Uvicorn 在优雅关闭后重新触发原信号；SIGTERM 的默认动作会直接终止解释器，可能跳过入口的 `finally`、遗留 Loguru 队列的 semaphore 并丢失末尾日志，因此不用于 E2E 的正常收尾。强制终止不保证资源清理或日志完整写入。
 
-Loguru 将应用、链路标识和 Uvicorn 日志通过 `enqueue=True` 交给后台线程写入配置目录；配置与导入阶段的错误直接显示在终端；运行日志由 `logging.console` 决定是否同时输出到终端。应用 lifespan 清理时和服务入口退出时等待日志队列处理完成，不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
+`app/infra/logging.py` 提供 `configure_logging(settings)`，标准库日志模块使用 `std_logging` 别名，与 Loguru 的 `logger` 实例区分；应用工厂与服务入口负责调用，infra 包入口不自动初始化日志。Loguru 将应用、链路标识和 Uvicorn 日志通过 `enqueue=True` 交给后台线程写入配置目录；配置与导入阶段的错误直接显示在终端；运行日志由 `logging.console` 决定是否同时输出到终端。应用 lifespan 清理时和服务入口退出时等待日志队列处理完成，不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
 
 ## V1 范围与验收
 

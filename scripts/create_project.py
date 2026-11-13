@@ -232,7 +232,7 @@ ROOT_PROJECT_FILES = (
     "backend/app/infra/database.py",
     "backend/app/infra/errors.py",
     "backend/app/infra/frontend.py",
-    "backend/app/infra/logging_setup.py",
+    "backend/app/infra/logging.py",
     "backend/app/infra/middleware.py",
     "backend/entrypoints/__init__.py",
     "backend/entrypoints/cli.py",

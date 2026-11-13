@@ -8,7 +8,7 @@ from loguru import logger
 
 from app.application import create_app
 from app.config import CONFIG_FILE, load_settings
-from app.infra.logging_setup import configure_logging
+from app.infra.logging import configure_logging
 
 
 def main() -> None:

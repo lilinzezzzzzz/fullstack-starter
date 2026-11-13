@@ -29,6 +29,10 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 `ApplicationSettings` 提供只读派生属性 `docs_url`、`redoc_url`、`openapi_url`，将各自必填的启用开关和路径转换为有效路径或 `None`，应用工厂直接读取。它们不是新增 TOML 字段，不进入配置导出；关闭功能仍需提供原始 `*_path`，供前端保留这些路径并返回真实 404。OpenAPI 与交互文档开关的关联校验保持不变，不允许关闭 OpenAPI 时启用 Swagger 或 ReDoc。
 
+`LoggingSettings.compression_format` 是供日志初始化读取的只读派生属性，将必填的 `logging.compression` 中的 `"none"` 转为 `None`，`"gz"` 和 `"zip"` 保持原值；它不是 TOML 字段，也不进入配置导出。配置文件与导出结果仍使用原始的 `compression` 字符串。
+
+日志输出的固定策略也集中在 `LoggingSettings`：`backtrace = false`、`diagnose = false`、`enqueue = true`、`colorize = false`、`catch = true`。这些是使用 `ClassVar` 声明的代码级类属性，不是可由 TOML 设置的字段，不进入配置导出或 JSON Schema；在 `[logging]` 中添加同名键仍按未知字段拒绝。日志初始化统一读取这些属性，文件与控制台输出沿用相同策略。
+
 - `logging.retention_days = 0` 显式表示保留所有轮转日志。
 - `server.concurrency_limit = 0` 显式表示不设置并发上限。
 - `testing.action_timeout_seconds = 0` 显式关闭单动作超时。
