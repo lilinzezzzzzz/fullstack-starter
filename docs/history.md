@@ -4,6 +4,31 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-13 Prettier 根配置、配置项注释与提交后完整验证
+
+本轮改动已整理为两个本地提交：`7300c47` 包含日志模块与策略配置调整、`backend/app/config.py` 的配置项注释；`8cabcbe` 包含 Prettier 根配置迁移及配套的创建器、源码路径保护、测试和文档。以下完整验证基于 `8cabcbeada0ecab0dba2608a18db6adf2a856473`，覆盖两个提交的最终组合；验证开始及结束时 HEAD 均未变化，工作区干净。
+
+将 `frontend/.prettierrc.toml` 与 `frontend/.prettierignore` 移到根目录，格式配置逐字节保留；目录名和锁文件排除规则保持原样，生成类型的固定路径改为 `frontend/src/types/api.generated.d.ts`。`format:check` 与 `format` 保持相同匹配范围，从前端入口读取根 `.prettierignore` 与 `.gitignore`；13 份 Markdown 均解析到根 `.prettierrc.toml`。迁移前后 22 个路径样本的忽略结果一致，临时生成副本中的 16 个格式错误全部被检出，检查模式未改写文件；格式化后复查通过，15 个排除样本保持原样。
+
+项目创建器将两份根配置列为必需文件并原样复制，回归覆盖旧前端位置不再保留副本、模板缺失或复制遗漏时拒绝生成，以及失败只清理新目标。两份根配置同时纳入源码路径保护；新增的 10 个用例先复现迁移后可将它们误用作公开输出、数据、备份、日志或测试目录的缺口，补入保护清单后通过。配置契约和项目创建器定向测试共 81 项通过。
+
+`backend/app/config.py` 为全部 100 个 TOML 配置项、配置分组及固定日志策略补充中文注释，说明用途、时间/像素单位、零值含义、路径基准、重试条件与 telemetry 固定约束。注释补充前后 AST 和可执行代码 token 一致，未改变原字段、类型、必填性或校验逻辑；固定日志类属性和 `compression_format` 派生属性属于同轮单独的日志配置调整，边界见[配置约定](configuration.md)。
+
+提交后的完整验证在 macOS、Python 3.14.7、Node.js 24.22.0、Corepack pnpm 9.12.2 下执行。命令从项目根目录运行，复用已安装的锁定依赖；后端使用独占临时 pytest 目录，E2E 通过完整临时 TOML 指定 Chromium，并使用含空格与单引号的临时父目录。
+
+| 检查入口或范围                                                       | 观察结果                                                                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `uv run --directory backend --no-sync pytest`                        | 完整后端 237 项通过，31.32 秒，包含真实服务启停、日志、配置契约和项目创建器回归                                          |
+| Ruff lint 与格式检查，覆盖 `backend/` 和 `scripts/create_project.py` | 通过，53 个 Python 文件格式符合配置                                                                                      |
+| `pnpm --dir frontend format:check`                                   | 统一 Prettier 检查通过，覆盖前端、README、docs 和各级 AGENTS                                                             |
+| `pnpm --dir frontend lint`                                           | ESLint 通过                                                                                                              |
+| `pnpm --dir frontend api:types:check`                                | API 生成类型与当前 Schema 一致，未改写生成文件                                                                           |
+| `pnpm --dir frontend test:e2e --config <独占临时TOML>`               | TypeScript 检查与临时生产构建通过，4 项 Chromium 页面流程通过，浏览器阶段 5.2 秒                                         |
+| E2E 关闭与日志                                                       | 未出现 multiprocessing semaphore 清理警告；文件日志完整包含 `Application shutdown complete` 与 `Finished server process` |
+| 进程与 Git 状态                                                      | 测试服务 PID 已退出，按临时路径及其解析路径检查未发现本次运行器或浏览器残留；`git diff --check` 通过，工作区干净         |
+
+完整验证前后，108 个跟踪文件与 11 个已有运行文件的哈希保持一致，未启停日常服务。数据库、日志、浏览器临时文件与构建输出全部使用任务独占目录；核对关闭日志后已清理本次临时资源，未推送远程。上述检查范围内未观察到这两个提交引入的回归；本条补记已执行结果，保留此前各条历史记录的当时语义。
+
 ## 2026-11-13 日志基础设施模块命名统一
 
 将 `backend/app/infra/logging_setup.py` 重命名为 `backend/app/infra/logging.py`，标准库 `logging` 使用 `std_logging` 别名，Loguru 实例仍名为 `logger`。应用工厂、服务入口、日志测试、项目创建器必需文件清单及生成回归同步新路径；生成副本不保留旧模块，排除或删除新模块时均拒绝生成并只清理本次目标。当前设计更新模块职责，旧历史描述保留，仅修正现址链接。
