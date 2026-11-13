@@ -225,6 +225,8 @@ ROOT_PROJECT_FILES = (
     ".gitignore",
     ".editorconfig",
     ".node-version",
+    ".prettierrc.toml",
+    ".prettierignore",
     "configs/app.toml",
     "backend/pyproject.toml",
     "backend/app/application.py",
@@ -249,8 +251,6 @@ ROOT_PROJECT_FILES = (
     "frontend/eslint.config.js",
     "frontend/playwright.config.ts",
     "frontend/.npmrc",
-    "frontend/.prettierrc.toml",
-    "frontend/.prettierignore",
 )
 SOURCE_TREE_ROOTS = (
     "backend/app",

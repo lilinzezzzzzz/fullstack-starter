@@ -41,6 +41,8 @@ fullstack-starter/
 ├── .editorconfig
 ├── .gitignore
 ├── .node-version
+├── .prettierrc.toml                  # 前端与项目 Markdown 共用的格式规则
+├── .prettierignore                   # 相对根目录的 Prettier 排除规则
 ├── configs/app.toml                  # 唯一应用配置入口
 ├── scripts/                          # 工程工具
 │   ├── create-project.sh             # 创建项目的 sh 入口
@@ -93,7 +95,7 @@ fullstack-starter/
 │   └── tests/                        # API、配置、数据库、静态托管、启停
 ├── frontend/
 │   ├── package.json / pnpm-lock.yaml
-│   ├── .npmrc / .prettierrc.toml / .prettierignore
+│   ├── .npmrc
 │   ├── index.html / public/favicon.svg
 │   ├── vite.config.ts / tsconfig.json
 │   ├── eslint.config.js / playwright.config.ts

@@ -38,6 +38,8 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     target = tmp_path / "directory with spaces 中文" / "my application"
     protected = (
         ".gitignore",
+        ".prettierrc.toml",
+        ".prettierignore",
         "configs/app.toml",
         "backend/pyproject.toml",
         "backend/uv.lock",
@@ -119,6 +121,9 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert not (target / "backend/app/service.py").exists()
     assert (target / "frontend/src/types/api.generated.d.ts").is_file()
     assert (target / ".gitignore").is_file()
+    for name in (".prettierrc.toml", ".prettierignore"):
+        assert (target / name).read_bytes() == before[name]
+        assert not (target / "frontend" / name).exists()
     assert "所有应用配置项均为必填" in (target / "configs/app.toml").read_text()
     assert (
         json.loads((target / "frontend/package.json").read_text())["name"] == "ledger-app-frontend"
@@ -410,6 +415,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
     )
     assert result.returncode == 0, result.stderr
     excluded = (
+        "/.prettierrc.toml",
+        "/.prettierignore",
         "/backend/app/application.py",
         "/backend/app/infra/__init__.py",
         "/backend/app/infra/database.py",
@@ -433,6 +440,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
     assert result.returncode == 1
     assert "missing required files" in result.stderr
     for name in (
+        ".prettierrc.toml",
+        ".prettierignore",
         "backend/app/application.py",
         "backend/app/infra/__init__.py",
         "backend/app/infra/database.py",
@@ -448,6 +457,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         assert name in result.stderr
     assert not target.exists()
     for name in (
+        ".prettierrc.toml",
+        ".prettierignore",
         "backend/app/application.py",
         "backend/app/infra/__init__.py",
         "backend/app/infra/database.py",
@@ -466,6 +477,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
 @pytest.mark.parametrize(
     "missing_file",
     [
+        ".prettierrc.toml",
+        ".prettierignore",
         "backend/app/infra/logging.py",
         "backend/entrypoints/__init__.py",
         "backend/entrypoints/service.py",

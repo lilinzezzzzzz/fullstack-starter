@@ -19,7 +19,15 @@ SOURCE_DIRECTORIES = (
     ".codex",
     ".aws",
 )
-SOURCE_FILES = ("AGENTS.md", "README.md", ".gitignore", ".editorconfig", ".node-version")
+SOURCE_FILES = (
+    "AGENTS.md",
+    "README.md",
+    ".gitignore",
+    ".editorconfig",
+    ".node-version",
+    ".prettierrc.toml",
+    ".prettierignore",
+)
 RESERVED_RUNTIME_DIRECTORIES = (
     "data",
     ".data",

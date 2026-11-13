@@ -192,6 +192,8 @@ def test_public_output_cannot_contain_private_storage(tmp_path: Path) -> None:
         "frontend/public",
         ".",
         "README.md",
+        ".prettierrc.toml",
+        ".prettierignore",
     ],
 )
 def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -> None:
@@ -209,14 +211,17 @@ def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -
         "testing.temporary_directory",
     ],
 )
-def test_runtime_paths_cannot_use_source_directories(tmp_path: Path, field: str) -> None:
+@pytest.mark.parametrize("destination", ["backend/app", ".prettierrc.toml", ".prettierignore"])
+def test_runtime_paths_cannot_use_source_directories(
+    tmp_path: Path, field: str, destination: str
+) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
     section, separator, name = field.partition(".")
     if separator:
-        data[section][name] = "backend/app"
+        data[section][name] = destination
     else:
-        data[field] = "backend/app"
+        data[field] = destination
     save_config(path, data)
     with pytest.raises(ValidationError, match="project source"):
         load_settings(path)

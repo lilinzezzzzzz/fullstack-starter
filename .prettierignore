@@ -5,4 +5,4 @@ test-results/
 playwright-report/
 pnpm-lock.yaml
 # 由 openapi-typescript 生成，格式由生成器管理。
-src/types/api.generated.d.ts
+frontend/src/types/api.generated.d.ts

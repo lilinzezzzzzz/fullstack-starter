@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "format": "prettier . ../README.md \"../docs/**/*.md\" \"../**/AGENTS.md\" --ignore-path .prettierignore --ignore-path ../.gitignore --write",
-    "format:check": "prettier . ../README.md \"../docs/**/*.md\" \"../**/AGENTS.md\" --ignore-path .prettierignore --ignore-path ../.gitignore --check",
+    "format": "prettier . ../README.md \"../docs/**/*.md\" \"../**/AGENTS.md\" --ignore-path ../.prettierignore --ignore-path ../.gitignore --write",
+    "format:check": "prettier . ../README.md \"../docs/**/*.md\" \"../**/AGENTS.md\" --ignore-path ../.prettierignore --ignore-path ../.gitignore --check",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "api:types": "node scripts/generate-api-types.mjs",
