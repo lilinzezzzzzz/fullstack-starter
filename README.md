@@ -28,7 +28,7 @@ Python 实际链接的 SQLite 必须为 **3.51.3+**，这是本脚手架的完�
 
 | 职责               | 位置与边界                                                                                                                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 服务与维护入口     | [backend/entrypoints/](backend/entrypoints/)：`service.sh` 调用 `service.py` 前台运行；`cli.py` 提供配置/OpenAPI 导出和数据库维护命令                                                      |
+| 服务与维护入口     | [backend/entrypoints/](backend/entrypoints/)：`service.sh` 调用 `service.py` 提供前台运行与后台启停；`cli.py` 提供配置/OpenAPI 导出和数据库维护命令                                        |
 | 应用装配           | [backend/app/application.py](backend/app/application.py)：`create_app(settings)` 显式接收配置，组织中间件、异常处理、路由、OpenAPI 和前端挂载；同文件 lifespan 管理运行资源                |
 | 基础设施与底层工具 | [infra/](backend/app/infra/) 提供数据库、日志、静态托管与通用 HTTP 适配；[utils/](backend/app/utils/) 仅放标准库路径策略和数据库锁                                                         |
 | HTTP 与业务        | [routers/](backend/app/routers/)、[services/](backend/app/services/)、[schemas/](backend/app/schemas/) 分别承担请求适配、业务规则与接口结构；持久化结构放在 [models/](backend/app/models/) |
@@ -74,7 +74,7 @@ pnpm --dir frontend install --frozen-lockfile
 uv run --directory backend python -m entrypoints.cli db-check
 uv run --directory backend python -m entrypoints.cli db-upgrade
 pnpm --dir frontend build
-sh backend/entrypoints/service.sh
+sh backend/entrypoints/service.sh run
 ```
 
 随附配置访问 [http://127.0.0.1:18001/](http://127.0.0.1:18001/)。启动时检查数据库版本与前端产物，不自动迁移、安装依赖或构建。
@@ -88,17 +88,49 @@ sh backend/entrypoints/service.sh
 
 ## 服务控制
 
-`sh backend/entrypoints/service.sh` 前台运行，Ctrl+C 停止，重新执行即可再次启动。信号与优雅关闭由 Uvicorn 处理，不提供后台控制子命令或 PID 管理，端口占用时只报错。
+入口必须指定子命令；不指定 `--config` 时固定读取项目根目录的 `configs/app.toml`，不根据当前工作目录查找配置。
+
+| 命令      | 行为                                                                                |
+| --------- | ----------------------------------------------------------------------------------- |
+| `run`     | 前台运行，Ctrl+C 优雅停止；用于调试与 E2E                                           |
+| `start`   | 后台启动，Uvicorn 启动且 `/api/health` 正常后返回 PID、地址及日志位置               |
+| `status`  | 显示 healthy、unhealthy、starting、stopping、unreachable、config-changed 或 stopped |
+| `stop`    | 认证目标实例，由目标进程自行触发 SIGINT，等待资源与日志清理                         |
+| `restart` | 先停止再后台启动；停止失败时不启动                                                  |
+
+```bash
+sh backend/entrypoints/service.sh start
+sh backend/entrypoints/service.sh status
+sh backend/entrypoints/service.sh restart
+sh backend/entrypoints/service.sh stop
+```
+
+重复 `start` 对健康且配置一致的实例返回成功；重复 `stop` 对未运行实例返回成功。`status` 的退出码为健康 0、已停止 3、其他状态或错误 1；缺少或非法子命令返回 2。其他命令成功为 0，执行失败为 1。`run` 遇到原生信号时沿用 Uvicorn/Python 的退出行为。
+
+启动和停止等待期限取 `[service]`。启动失败会回收本次创建的子进程；清理或停止超时保留实例并报错，不自动 SIGKILL。端口占用只报错，不处理占用端口的进程。不自动安装依赖、迁移数据库或构建前端。
 
 服务与维护命令必须使用同一配置；先准备包含全部字段的 `configs/app.local.toml`，再显式选择。CLI 的 `--config` 放在子命令前：
 
 ```bash
-sh backend/entrypoints/service.sh --config configs/app.local.toml
-# 维护前先在服务终端按 Ctrl+C 停止；此处只检查临时库
+sh backend/entrypoints/service.sh start --config configs/app.local.toml
+# 使用同一配置停止服务；此处 db-check 只检查临时库
+sh backend/entrypoints/service.sh stop --config configs/app.local.toml
 uv run --directory backend python -m entrypoints.cli --config configs/app.local.toml db-check
 ```
 
-运行服务与数据库升级共用数据库旁的文件锁，运行期间不要删除锁文件。随附数据库为 `.data/app.sqlite3`，日志为 `logs/app.log`；正常 Ctrl+C 关闭时等待 Loguru 队列写完。其他信号和强制终止的日志边界见[进程约定](docs/design.md#配置访问与进程边界)。自定义运行路径后检查 `.gitignore`，避免提交数据、备份、日志或私有配置。
+每个项目只允许一个服务实例。所有配置共用项目根目录的 `.run/`，更换数据库、端口或 `--config` 不能并行启动另一个实例；管理现有实例时使用其启动配置路径。
+
+```text
+.run/
+├── instance.json   # PID、UTC 启动时间、完整 Python 命令、配置路径和控制身份
+├── run.lock        # 服务运行及清理期间持有
+├── control.lock    # 串行执行启停命令
+└── console.log     # 后台标准输出、错误及启动诊断
+```
+
+实例记录通过临时 `instance.json.pending` 原子替换，权限为 0600，不得提交或分享。正常退出删除记录，两个锁文件保留；是否运行取决于锁是否被持有。`.run/` 固定在项目根目录，不由 TOML 或环境变量另选，也不允许符号链接重定向。配置内容更新后使用 `restart`；更换配置文件路径前先停止旧实例。
+
+数据库继续位于 `.data/app.sqlite3`，应用日志位于 `logs/app.log`，两者仍按 TOML 配置。运行服务与数据库升级共用数据库旁的 `.data/app.sqlite3.lock`，它用于数据库维护互斥，与 `.run/run.lock` 职责不同；运行期间不要删除锁文件。前台 Ctrl+C 和 `stop` 均等待资源清理与 Loguru 队列写完。其他信号和强制终止的日志边界见[进程约定](docs/design.md#配置访问与进程边界)。自定义运行路径后检查 `.gitignore`，避免提交数据、备份、日志或私有配置。
 
 ## 可选 Vite 开发
 
@@ -106,7 +138,7 @@ uv run --directory backend python -m entrypoints.cli --config configs/app.local.
 
 ```bash
 # 终端一
-sh backend/entrypoints/service.sh
+sh backend/entrypoints/service.sh run
 # 终端二
 pnpm --dir frontend dev
 ```
@@ -155,14 +187,14 @@ pnpm --dir frontend build
 
 `pnpm --dir frontend format:check` 统一检查前端文件、根 README、`docs/` 下全部 Markdown 和各级 `AGENTS.md`，新增子目录自动纳入；`pnpm --dir frontend format` 整理相同范围。两者共用根 `.prettierrc.toml`，并读取根 `.prettierignore` 和 `.gitignore`，排除生成类型、锁文件、依赖、构建和私有运行产物。
 
-后端测试使用临时 TOML、日志和 SQLite；`integration` 测试需要本机监听与信号权限，受限环境可运行 `uv run --directory backend pytest -m 'not integration'`，但需另报未验证的真实启停。上面的 `build` 使用主 TOML 的输出位置；需要隔离验证构建时，使用下面的 E2E 入口，它也执行 TypeScript 检查与构建。
+后端服务测试使用独立临时项目副本，隔离项目 `.run/`，其余测试使用临时 TOML、日志和 SQLite；`integration` 测试需要本机监听与信号权限，受限环境可运行 `uv run --directory backend pytest -m 'not integration'`，但需另报未验证的真实启停。上面的 `build` 使用主 TOML 的输出位置；需要隔离验证构建时，使用下面的 E2E 入口，它也执行 TypeScript 检查与构建。
 
 ```bash
 pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test:e2e
 ```
 
-E2E 统一经 `test:e2e` 执行 TypeScript 检查、临时生产构建、数据库升级和浏览器流程，随附配置使用 Chromium；通过后端 Shell 入口启动独立服务，不复用日常数据与产物。正常收尾使用 SIGINT，沿用 Uvicorn 原生 Ctrl+C 关闭路径并等待日志写完。
+E2E 统一经 `test:e2e` 执行 TypeScript 检查、临时生产构建、数据库升级和浏览器流程，随附配置使用 Chromium；通过临时后端项目副本的 Shell 入口启动独立服务，隔离固定 `.run/`，不复用日常数据与产物。正常收尾使用 SIGINT，沿用 Uvicorn 原生 Ctrl+C 关闭路径并等待日志写完。
 
 可加 `--config /absolute/path/app.test.toml` 提供完整测试设置；成功且 `testing.keep_artifacts = false` 时清理，设为 true 或失败时保留并打印产物位置。不要直接执行 Playwright test 绕过隔离入口；Chromium 的本机进程权限不足时报告验证限制。
 

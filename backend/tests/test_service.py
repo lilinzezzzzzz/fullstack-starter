@@ -3,6 +3,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -13,8 +14,11 @@ import pytest
 
 from app.config import PROJECT_ROOT, Settings, load_settings
 from app.utils.database_lock import ServiceError, operation_lock
+from entrypoints import service_control
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, response_trace_id, save_config, write_config
+
+pytestmark = pytest.mark.usefixtures("service_project")
 
 
 def test_database_lock_is_exclusive_and_released_after_failure(tmp_path: Path) -> None:
@@ -38,11 +42,21 @@ def unused_port() -> int:
 @contextmanager
 def foreground_service(
     config: Path,
+    *,
+    command: list[str] | None = None,
 ) -> Generator[tuple[subprocess.Popen[bytes], Path]]:
     output_file = config.with_suffix(".foreground.log")
     with output_file.open("w") as output:
         process = subprocess.Popen(
-            ["sh", str(PROJECT_ROOT / "backend/entrypoints/service.sh"), "--config", str(config)],
+            command
+            if command is not None
+            else [
+                "sh",
+                str(service_control.PROJECT_ROOT / "backend/entrypoints/service.sh"),
+                "run",
+                "--config",
+                str(config),
+            ],
             cwd=config.parent,
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -92,6 +106,8 @@ def test_foreground_service_ctrl_c_and_maintenance_lock(
     monkeypatch.setenv("FASTAPI_OTEL_AUTO_CONFIGURE", "true")
     with foreground_service(config) as (process, output):
         base_url = wait_for_service(process, settings, output)
+        record = json.loads(service_control.runtime_path("instance.json").read_text())
+        assert record["pid"] == process.pid
         with urlopen(
             Request(
                 f"{base_url}/api/v1/hello",
@@ -129,8 +145,7 @@ def test_foreground_service_ctrl_c_and_maintenance_lock(
             assert "in progress" in duplicate_output.read_text()
         assert process.poll() is None
         os.killpg(process.pid, signal.SIGINT)
-        # uv 自身也收到进程组 SIGINT 时可返回 130；服务仍须完整关闭并写入日志。
-        assert process.wait(timeout=10) in (0, 130)
+        assert process.wait(timeout=10) == 0
     terminal = output.read_text()
     assert "resource_tracker" not in terminal
     assert "leaked semaphore" not in terminal
@@ -173,3 +188,44 @@ def test_occupied_port_is_left_untouched_and_database_lock_is_released(tmp_path:
             assert process.wait(timeout=10) != 0
         assert listener.getsockname()[1] == settings.server.port
         upgrade_database(settings)
+
+
+@pytest.mark.integration
+def test_repeated_sigint_cannot_interrupt_final_control_cleanup(tmp_path: Path) -> None:
+    config = write_config(tmp_path)
+    data = read_config(config)
+    data["server"]["port"] = unused_port()
+    save_config(config, data)
+    settings = load_settings(config)
+    upgrade_database(settings)
+    marker = config.with_suffix(".cleanup")
+    # 在独立解释器中放大关闭窗口，确定第二个信号落在 Uvicorn 退出之后。
+    probe = tmp_path / "cleanup_probe.py"
+    probe.write_text(
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "from entrypoints import service\n"
+        "original_close = service.InstanceControl.close\n"
+        "def delayed_close(self):\n"
+        "    Path(sys.argv[-1]).with_suffix('.cleanup').touch()\n"
+        "    time.sleep(0.5)\n"
+        "    original_close(self)\n"
+        "service.InstanceControl.close = delayed_close\n"
+        "service.main()\n"
+    )
+    command = [sys.executable, "-c", probe.read_text(), "run", "--config", str(config)]
+    # -c 从 backend 加载包；测试资源及日志仍全部位于 tmp_path。
+    backend = service_control.PROJECT_ROOT / "backend"
+    command[2] = f"import sys; sys.path.insert(0, {str(backend)!r})\n" + command[2]
+    with foreground_service(config, command=command) as (process, output):
+        wait_for_service(process, settings, output)
+        os.killpg(process.pid, signal.SIGINT)
+        deadline = time.monotonic() + 5
+        while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert marker.exists(), output.read_text()
+        os.killpg(process.pid, signal.SIGINT)
+        assert process.wait(timeout=5) == 0
+    assert "Traceback" not in output.read_text()
+    assert not service_control.runtime_path("instance.json").exists()
+    upgrade_database(settings)

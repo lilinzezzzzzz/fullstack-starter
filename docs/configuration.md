@@ -2,7 +2,7 @@
 
 ## 结论与格式选择
 
-本项目的应用配置入口为 [configs/app.toml](../configs/app.toml)。当前有 **100 个叶子配置项**，所有字段和分组都必须显式提供。缺项、未知项、错误类型或无效数值直接报错，不由代码、环境变量、`.env` 或旧 JSON 文件补齐。
+本项目的应用配置入口为 [configs/app.toml](../configs/app.toml)。当前有 **102 个叶子配置项**，所有字段和分组都必须显式提供。缺项、未知项、错误类型或无效数值直接报错，不由代码、环境变量、`.env` 或旧 JSON 文件补齐。
 
 JSON 是可靠的机器交换格式，适合 API、生成数据和工具元信息。这里的配置主要由人维护，字段增加后需要分组和注释，因此选择 TOML。它不是对所有项目都最优，而是更适合当前 Python 主导、前后端同仓库的小型脚手架。[TOML 规范](https://toml.io/en/)
 
@@ -12,18 +12,19 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 ## 已收拢的运行参数
 
-| 分组                    | 必填字段                                                                                                                                                                                                                                                                                                                                                                      | 使用位置                                                              |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| 根配置                  | `data_dir`, `database_filename`, `backup_directory`, `frontend_dir`, `serve_frontend`, `frontend_clean_output`, `sqlite_timeout_seconds`, `allowed_hosts`, `allowed_origins`                                                                                                                                                                                                  | 数据库、备份、前端输出和本机访问边界                                  |
-| `application`           | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path`                                                                                                                                                                                                                                                             | FastAPI 标题、版本、文档路由与前端应用标识；不影响固定的 Hello 欢迎语 |
-| `server`                | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit`                                                                                                                                                                                                                                                                  | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限               |
-| `database`              | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds`                                                                                                                                                                                                                                                                                            | SQLite 日志与持久化模式、连接池容量和等待时间                         |
-| `logging`               | `directory`, `filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging`                                                                                                                                                                                                                                            | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志           |
-| `telemetry`             | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods`                                                                                                                                                                       | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接                  |
-| `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length`                                                                                                                                                                                                        | 显式传入全部八项 SDK SpanLimits；随附值均为 0                         |
-| `vite`                  | `host`, `port`, `proxy_target`, `strict_port`, `change_origin`                                                                                                                                                                                                                                                                                                                | 开发服务器地址、端口、严格端口策略和代理行为                          |
-| `client`                | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family`              | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题                    |
-| `testing`               | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物        |
+| 分组                    | 必填字段                                                                                                                                                                                                                                                                                                                                                                      | 使用位置                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 根配置                  | `data_dir`, `database_filename`, `backup_directory`, `frontend_dir`, `serve_frontend`, `frontend_clean_output`, `sqlite_timeout_seconds`, `allowed_hosts`, `allowed_origins`                                                                                                                                                                                                  | 数据库、备份、前端输出和本机访问边界                                              |
+| `application`           | `title`, `version`, `docs_enabled`, `redoc_enabled`, `openapi_enabled`, `docs_path`, `redoc_path`, `openapi_path`                                                                                                                                                                                                                                                             | FastAPI 标题、版本、文档路由与前端应用标识；不影响固定的 Hello 欢迎语             |
+| `server`                | `host`, `port`, `workers`, `graceful_shutdown_seconds`, `keep_alive_seconds`, `backlog`, `concurrency_limit`                                                                                                                                                                                                                                                                  | 单 worker 启动、优雅关闭、Keep-Alive、backlog、并发上限                           |
+| `service`               | `startup_timeout_seconds`, `stop_timeout_seconds`                                                                                                                                                                                                                                                                                                                             | 后台启动就绪和停止清理等待期限，均为正秒数；停止期限必须大于 Uvicorn 优雅关闭期限 |
+| `database`              | `journal_mode`, `synchronous`, `pool_size`, `max_overflow`, `pool_timeout_seconds`                                                                                                                                                                                                                                                                                            | SQLite 日志与持久化模式、连接池容量和等待时间                                     |
+| `logging`               | `directory`, `filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging`                                                                                                                                                                                                                                            | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志                       |
+| `telemetry`             | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods`                                                                                                                                                                       | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接                              |
+| `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length`                                                                                                                                                                                                        | 显式传入全部八项 SDK SpanLimits；随附值均为 0                                     |
+| `vite`                  | `host`, `port`, `proxy_target`, `strict_port`, `change_origin`                                                                                                                                                                                                                                                                                                                | 开发服务器地址、端口、严格端口策略和代理行为                                      |
+| `client`                | `request_timeout_seconds`, `query_stale_seconds`, `query_cache_seconds`, `query_retry_attempts`, `query_retry_delay_seconds`, `retry_min_status`, `retry_network_errors`, `refetch_on_window_focus`, `refetch_on_mount`, `refetch_on_reconnect`, `mutation_retry_attempts`, `theme_primary_color`, `theme_border_radius`, `theme_font_size`, `theme_font_family`              | 请求超时、查询缓存/重试/刷新、写重试约束、组件主题                                |
+| `testing`               | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物                    |
 
 随附取值、单位和逐项说明见[主 TOML](../configs/app.toml)，字段类型、范围与跨字段约束由 [backend/app/config.py](../backend/app/config.py) 定义并执行校验，三者同步维护。TOML 中提供的数值是操作者选择的值，不是缺失时的默认值；注释不参与解析，也不产生额外配置项。
 
@@ -47,14 +48,14 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 
 应用加载和项目生成共用 `backend/app/utils/path_safety.py`，按路径用途分别检查：
 
-- 数据、备份与日志是私有目录，不得与受保护源码、项目根的依赖/工具缓存目录或公开输出双向重叠。默认 `.data/`、`.data/backups/` 与 `logs/` 是允许的私有路径，私有目录之间不统一禁止包含关系。
-- 公开输出额外避开根目录遗留的 `data/`、`.data/`、`logs/`、`.run/`，以及 `.venv/`、`node_modules/`、`.pytest_cache/`、`.ruff_cache/`。`frontend/` 内只允许 `frontend/dist/` 子树作为输出位置。
+- 数据、备份与日志是私有目录，不得与受保护源码、项目根的依赖/工具缓存目录、固定服务目录 `.run/` 或公开输出双向重叠。默认 `.data/`、`.data/backups/` 与 `logs/` 是允许的私有路径，私有目录之间不统一禁止包含关系。
+- 公开输出额外避开根目录的 `data/`、`.data/`、`logs/`、`.run/`，以及 `.venv/`、`node_modules/`、`.pytest_cache/`、`.ruff_cache/`。`frontend/` 内只允许 `frontend/dist/` 子树作为输出位置。
 - 源码保护覆盖 `backend/`（包含 Shell 与 Python 入口）、`frontend/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；根 `.prettierrc.toml` 和 `.prettierignore` 同样受保护，不能作为输出或私有运行目录。完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
 - 自动清空只允许实际的 `frontend/dist`，其子目录或指向外部的符号链接不能启用自动清空。其他合法输出位置需显式设置 `frontend_clean_output = false`。
 
-数据库文件、数据库锁和应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。
+数据库、数据库操作锁与应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。服务管理目录固定为项目根 `.run/`，包含 `instance.json`、`run.lock`、`control.lock` 和 `console.log`，原子写入期间短暂使用 `instance.json.pending`；不增加 TOML 字段或环境变量来另选目录。实例记录权限为 0600，新增 UTC 启动时间和完整 Python 命令；运行阶段仍通过控制通道实时查询，不将 JSON 文件存在作为存活证据。`.run/` 不允许符号链接重定向，不能与数据、备份、应用日志、公开输出或测试临时目录混用；数据库、数据库操作锁和应用日志文件也不能通过符号链接指入 `.run/`。该目录整体由 Git 忽略。
 
-`testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码或公开输出目录。E2E 强制使用本次临时目录中的构建、数据和日志，不复用日常产物。
+`testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码、固定 `.run/` 或公开输出目录。E2E 强制使用本次临时目录中的构建、数据和日志，不复用日常产物。
 
 迁移开发命令 `db-revision` 与 `db-check` 也使用这个父目录，始终清理本次临时子目录，不保留迁移数据库。命令先校验完整 TOML，再从其全部字段派生临时设置，将数据、备份、日志和前端输出限定到独占目录，并关闭前端托管与自动清空；派生结果再次通过 `Settings` 校验。数据库连接参数沿用所选 TOML，不增加配置字段或环境变量来源。强制资源隔离属于工具的固定安全边界，不能用配置关闭；`db-upgrade` 和 `db-backup` 仍操作 TOML 指定的应用数据库。操作步骤与迁移脚本能力边界见[数据库指南](database.md#迁移生成审查与验证)。
 
@@ -67,7 +68,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 ```text
 configs/app.toml
        │ Python tomllib + Pydantic 完整校验
-       ├── 前台 Uvicorn / 数据库 / Loguru
+       ├── 服务运行与启停 / Uvicorn / 数据库 / Loguru
        └── 本地构建工具的受控 JSON 交换
                     ├── Vite 开发 / 构建参数
                     └── 浏览器白名单：client + 应用标题/版本
@@ -84,7 +85,7 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 配置化的边界是可调运行参数。以下内容属于协议、完整性或安全规则，固定在代码中：
 
 - API 业务路径、operation ID、HTTP 方法和响应/错误字段；界面状态文案和页面布局设计。
-- 单 worker、严格端口、Uvicorn 信号与优雅关闭、服务与迁移互斥、启动失败的非零退出码与不按端口杀进程。
+- 项目级单实例、固定 `.run/` 与服务文件名、单 worker、严格端口、Uvicorn 信号与优雅关闭、服务与迁移互斥、启动失败的非零退出码与不按端口杀进程；实例凭据认证、运行文件命名、状态退出码、控制协议消息上限、0.5 秒单次连接超时与 0.1 秒轮询间隔。
 - SQLite 外键、显式事务、禁止跨并发任务共享 AsyncSession、参数隐藏、最低安全版本、只读连接与独占备份创建。
 - 日志追加、UTF-8、关闭局部变量诊断和回溯扩展、单 worker 队列后台写入、退出时等待队列处理完成，以及标准日志桥接规则。
 - 前端私有信息隔离、禁止通过配置绕过服务与迁移互斥或把源代码/数据目录作为公开构建输出。
@@ -124,14 +125,14 @@ SQLite 完整性基线及检查方式统一见[数据库指南](database.md#sqli
 
 旧 `configs/app.json` 已移除，没有格式兼容回退。自定义旧 JSON 需要按主 TOML 的完整字段清单迁移；旧的本地私有 JSON 仍被 Git 忽略，防止误提交，但不会被加载。
 
-服务改为前台运行后，旧版 TOML 应删除 `[service]` 分组及 `logging.bootstrap_filename`；未知字段仍明确失败，不做隐式兼容或合并。启动不接受后台控制子命令，停止使用 Ctrl+C。修改数据库路径前先停止服务，服务与维护命令使用同一个配置文件。
+服务入口必须显式指定 `run/start/status/stop/restart`，无参数不再隐式运行。所有命令未指定 `--config` 时读取项目根目录的 `configs/app.toml`。当前 `[service]` 仅接受两个必填等待期限；历史版本的其他服务管理字段与 `logging.bootstrap_filename` 均不兼容，按未知字段拒绝，不补值或合并。操作语义见 [README 的服务控制](../README.md#服务控制)。所有配置共用项目根 `.run/`，更换数据库或端口也不能启动第二个实例。配置内容更新后可用 `restart`；修改数据库或配置路径前先停止旧实例，服务与维护命令使用同一个配置文件。
 
 ## 验证
 
 - 逐一删除配置表或字段，验证所有项均不可省略。
 - 验证错误类型、未知字段、非有限超时被拒绝，零值和 false 不被替换。
 - 验证文件中的数据库池容量、日志模式、持久化模式、文档开关和应用标识实际生效。
-- 回归前台启动、Ctrl+C 关闭、运行期间迁移互斥及 Chromium 欢迎页；测试全部使用临时 TOML、日志和数据库。
+- 回归五个显式服务子命令、前后台日志清理、重复启停、凭据/配置身份不匹配拒绝、遗留状态、启动失败回收、停止超时不重启、运行期间迁移互斥及 Chromium 欢迎页；服务测试使用独立临时项目副本隔离固定 `.run/`，所有测试使用临时 TOML、日志和数据库。
 
 页面测试遵守 `testing.screenshot`，不强制绕过截图配置。验证还需检查前端公开白名单，确认构建 JavaScript 不包含私有存储或日志路径。历次实际检查见 [实现与验证记录](history.md)。
 

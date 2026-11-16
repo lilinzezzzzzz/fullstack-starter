@@ -8,6 +8,10 @@ data/
 logs/
 *.pid
 *.pid.lock
+*.service.json
+*.service.json.pending
+*.service.lock
+*.service.instance.lock
 *.log
 *.sqlite3
 *.sqlite3-wal

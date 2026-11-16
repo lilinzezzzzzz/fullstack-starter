@@ -75,6 +75,11 @@ class DatabaseSettings(ConfigSection):
     pool_timeout_seconds: float = Field(gt=0)  # 连接池耗尽后等待可用连接的期限，秒。
 
 
+class ServiceSettings(ConfigSection):
+    startup_timeout_seconds: float = Field(gt=0)  # 后台启动等待应用及健康检查就绪的期限。
+    stop_timeout_seconds: float = Field(gt=0)  # 停止等待进程清理完成的期限；超时不强杀。
+
+
 class LoggingSettings(ConfigSection):
     # 固定日志策略，不作为 TOML 字段或配置导出项。
     backtrace: ClassVar[bool] = False  # 不向异常捕获点之前扩展回溯。
@@ -212,6 +217,7 @@ class Settings(ConfigSection):
     allowed_origins: list[str]  # 额外允许的 Origin（协议/主机/端口），同源无需列入。
     application: ApplicationSettings  # 应用标识与文档入口，全部字段必填。
     server: ServerSettings  # Uvicorn 监听、连接及关闭参数。
+    service: ServiceSettings  # 本机服务管理的启动与停止等待期限。
     database: DatabaseSettings  # SQLite PRAGMA 与异步连接池参数。
     logging: LoggingSettings  # Loguru 文件、控制台及请求日志参数。
     telemetry: TelemetrySettings  # 仅维护 trace 上下文的原生 SDK 参数。
@@ -221,6 +227,10 @@ class Settings(ConfigSection):
 
     @model_validator(mode="after")
     def check_configuration_relationships(self) -> Self:
+        if self.service.stop_timeout_seconds <= self.server.graceful_shutdown_seconds:
+            raise ValueError(
+                "service.stop_timeout_seconds must exceed server.graceful_shutdown_seconds"
+            )
         if not self.application.openapi_enabled and (
             self.application.docs_enabled or self.application.redoc_enabled
         ):

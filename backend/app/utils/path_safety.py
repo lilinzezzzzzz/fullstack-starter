@@ -86,6 +86,9 @@ def validate_runtime_paths(
     logging_filename: str,
 ) -> None:
     project_root = project_root.resolve()
+    service_directory = project_root / ".run"
+    if service_directory.is_symlink():
+        raise ValueError("Service runtime directory .run must not be a symlink")
     public = (project_root / frontend_dir).resolve()
     raw_default_output = project_root / "frontend/dist"
     default_output = raw_default_output.resolve()
@@ -119,6 +122,8 @@ def validate_runtime_paths(
                 )
 
     for field, path in private_paths.items():
+        if paths_overlap(path, service_directory):
+            raise ValueError(f"{field} must not overlap the service runtime directory .run")
         if paths_overlap(public, path):
             raise ValueError("Frontend output must not overlap private data or runtime paths")
         for dependency in DEPENDENCY_DIRECTORIES:
@@ -131,6 +136,9 @@ def validate_runtime_paths(
         "database lock": database_path.with_suffix(database_path.suffix + ".lock"),
         "application log": Path(private_paths["logging.directory"]) / logging_filename,
     }
+    for field, path in file_paths.items():
+        if path_is_relative_to(path, service_directory):
+            raise ValueError(f"{field} must not use the service runtime directory .run")
     items = list(file_paths.items())
     for index, (first_name, first_path) in enumerate(items):
         for second_name, second_path in items[index + 1 :]:
@@ -138,6 +146,10 @@ def validate_runtime_paths(
                 raise ValueError(f"{first_name} and {second_name} must not use the same file path")
 
     temporary = (project_root / temporary_directory).resolve()
+    if path_is_relative_to(temporary, service_directory):
+        raise ValueError(
+            "testing.temporary_directory must not be inside the service runtime directory .run"
+        )
     # 此处是 mkdtemp 的父目录，不由运行器管理或删除。
     # /tmp 等外部父目录中可能包含已生成的项目。
     if paths_equal(temporary, project_root) or any(

@@ -54,7 +54,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "python -m entrypoints.cli db-check" in result.stdout
-    assert "sh backend/entrypoints/service.sh" in result.stdout
+    assert "sh backend/entrypoints/service.sh run" in result.stdout
     settings = exported_settings(target)
     assert settings["application"]["title"] == "ledger-app"
     assert settings["server"]["port"] == 18123
@@ -101,6 +101,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert (target / "backend/entrypoints/service.sh").is_file()
     assert (target / "backend/entrypoints/__init__.py").is_file()
     assert (target / "backend/entrypoints/service.py").is_file()
+    assert (target / "backend/entrypoints/service_control.py").is_file()
     assert (target / "backend/entrypoints/cli.py").is_file()
     assert not (target / "backend/app/cli.py").exists()
     assert not (target / "entrypoints").exists()
@@ -425,6 +426,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "/backend/app/infra/logging.py",
         "/backend/app/infra/middleware.py",
         "/backend/entrypoints/service.py",
+        "/backend/entrypoints/service_control.py",
         "/backend/entrypoints/service.sh",
         "/backend/entrypoints/cli.py",
         "/frontend/src/App.tsx",
@@ -450,6 +452,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/logging.py",
         "backend/app/infra/middleware.py",
         "backend/entrypoints/service.py",
+        "backend/entrypoints/service_control.py",
         "backend/entrypoints/service.sh",
         "backend/entrypoints/cli.py",
         "frontend/src/App.tsx",
@@ -467,6 +470,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/logging.py",
         "backend/app/infra/middleware.py",
         "backend/entrypoints/service.py",
+        "backend/entrypoints/service_control.py",
         "backend/entrypoints/service.sh",
         "backend/entrypoints/cli.py",
         "frontend/src/App.tsx",
@@ -482,6 +486,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/logging.py",
         "backend/entrypoints/__init__.py",
         "backend/entrypoints/service.py",
+        "backend/entrypoints/service_control.py",
         "backend/entrypoints/service.sh",
     ],
 )
@@ -515,13 +520,47 @@ def test_creator_rejects_missing_required_source_without_changing_template_data(
     assert not (template / missing_file).exists()
 
 
+def test_creator_always_excludes_project_runtime_and_restores_its_ignore_rule(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "template"
+    created = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert created.returncode == 0, created.stderr
+    ignore = template / ".gitignore"
+    ignore.write_text(
+        "\n".join(line for line in ignore.read_text().splitlines() if line.strip("/") != ".run")
+        + "\n"
+    )
+    private = template / ".run/instance.json"
+    private.parent.mkdir()
+    private.write_text("private instance record")
+    target = tmp_path / "copy"
+    result = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "copy-app", "18124"),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (target / ".run").exists()
+    assert "/.run/" in (target / ".gitignore").read_text().splitlines()
+    assert private.read_text() == "private instance record"
+
+
 def test_git_ignores_private_files_and_runtime_artifacts(tmp_path: Path) -> None:
     (tmp_path / ".gitignore").write_text((PROJECT_ROOT / ".gitignore").read_text())
     subprocess.run(["git", "init", "--quiet"], cwd=tmp_path, check=True, capture_output=True)
     paths = [
         ".env.local",
         ".secrets.production",
-        ".run/state.json",
+        ".run/instance.json",
+        ".run/instance.json.pending",
+        ".run/run.lock",
+        ".run/control.lock",
+        ".run/console.log",
         "custom/app.sqlite3-wal",
         "custom/app.sqlite3-shm",
     ]

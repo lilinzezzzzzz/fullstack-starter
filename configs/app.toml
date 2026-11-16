@@ -45,7 +45,7 @@ redoc_path = "/redoc"
 openapi_path = "/openapi.json"
 
 [server]
-# 前台 Uvicorn 单 worker 服务；重启和停止沿用原生信号处理。
+# 前后台共用 Uvicorn 单 worker 服务；管理入口通过 SIGINT 优雅停止。
 # Uvicorn 监听地址；本地使用通常绑定回环地址。
 host = "127.0.0.1"
 # API 监听端口，范围 1–65535；端口占用时启动失败。
@@ -60,6 +60,15 @@ keep_alive_seconds = 5
 backlog = 2048
 # Uvicorn 并发连接/任务上限；0 转为不设上限。
 concurrency_limit = 0
+
+[service]
+# 每个项目只允许一个实例，管理文件固定在项目根 .run/，不按配置或数据库另选目录。
+# 控制台输出为 .run/console.log；应用日志仍使用 [logging]。
+# start 等待 Uvicorn 启动且 /api/health 正常的最长秒数，必须大于 0。
+startup_timeout_seconds = 15.0
+# stop 等待进程退出和日志排空的最长秒数，必须大于 server.graceful_shutdown_seconds。
+# 超时保留实例信息并报错，不自动 SIGKILL；restart 此时不会启动新进程。
+stop_timeout_seconds = 20.0
 
 [database]
 # SQLite PRAGMA 与 SQLAlchemy 异步连接池参数，不控制是否自动执行迁移。

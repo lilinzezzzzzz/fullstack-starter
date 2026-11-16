@@ -57,7 +57,7 @@ SQLite、本地单用户、全部必填 TOML、FastAPI 托管前端以及只维�
 | 底层共用工具                  | `backend/app/utils/`                                                           | 路径策略与数据库锁能否仅依赖标准库，由调用方传参，供创建器独立加载               |
 | 配置输入与定义                | `configs/app.toml`、`backend/app/config.py`                                    | 字段注释、单位、零值、来源与路径基准是否一致，固定策略与派生属性是否被误当成输入 |
 | 维护与迁移                    | `backend/app/maintenance/`、`backend/migrations/`                              | 请求路径是否执行维护，迁移是否隐式运行                                           |
-| 服务与维护 CLI 入口           | `backend/entrypoints/service.sh`、`service.py`、`cli.py`                       | Shell 定位、配置选择、事件循环边界与失败退出是否明确                             |
+| 服务与维护 CLI 入口           | `backend/entrypoints/service.sh`、`service.py`、`service_control.py`、`cli.py` | Shell 定位、配置选择、事件循环边界与失败退出是否明确                             |
 | 项目创建器                    | `scripts/create-project.sh`、`scripts/create_project.py`                       | 移动后的关键文件、复制清单、路径保护、重命名与生成副本是否同步                   |
 | 前端请求、查询与呈现          | `frontend/src/api/`、`hooks/`、`pages/`、`components/`                         | 请求取消、重试、状态与呈现是否职责清楚                                           |
 | 构建配置与接口类型            | `frontend/scripts/project-config.mjs`、`frontend/src/types/api.generated.d.ts` | 构建是否复用后端 loader，浏览器白名单与生成类型是否受控                          |
@@ -127,7 +127,7 @@ SQLite、本地单用户、全部必填 TOML、FastAPI 托管前端以及只维�
 
 代码组织调整通常可通过版本控制回退，仍需核对配置与调用方兼容性。数据转换不能依赖代码回退恢复：需要在执行前验证可恢复的快照、旧数据升级路径与恢复步骤；仅在 schema 层降级并不证明数据可还原。生产或外部变更按原项目的授权流程执行。
 
-本脚手架前台运行使用 Ctrl+C，隔离 E2E 以 SIGINT 走同一条 Uvicorn 原生关闭路径。原项目仍按自己的进程管理与部署方式选择和验证关闭信号，同时核对资源释放与末尾日志落盘。
+本脚手架 `run` 前台运行使用 Ctrl+C，后台 `stop/restart` 通过实例认证控制通道触发 SIGINT，隔离 E2E 显式使用 `run` 并以 SIGINT 走同一条 Uvicorn 原生关闭路径。原项目仍按自己的进程管理与部署方式选择和验证关闭信号，同时核对资源释放与末尾日志落盘。
 
 ## 在原项目中落地计划
 

@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { clearTimeout, setTimeout } from 'node:timers';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -147,7 +147,23 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
   );
   const generatedConfig = join(workDir, 'playwright.config.mjs');
   const testFactory = pathToFileURL(join(frontendRoot, 'scripts/playwright-settings.mjs')).href;
-  const serviceCommand = `sh backend/entrypoints/service.sh --config '${configFile.replaceAll("'", "'\\''")}'`;
+  // 服务管理目录固定为项目根的 .run；复制后端以隔离整份项目的运行状态。
+  const serviceRoot = join(workDir, 'service-project');
+  const serviceBackend = join(serviceRoot, 'backend');
+  await cp(join(projectRoot, 'backend'), serviceBackend, {
+    recursive: true,
+    filter: (source) => {
+      const name = basename(source);
+      return (
+        !['.venv', '__pycache__', '.pytest_cache', '.ruff_cache', 'tests'].includes(name) &&
+        !name.startsWith('.env') &&
+        !name.startsWith('.secrets')
+      );
+    },
+  });
+  await symlink(join(projectRoot, 'backend/.venv'), join(serviceBackend, '.venv'), 'dir');
+  const serviceEntry = join(serviceBackend, 'entrypoints/service.sh');
+  const serviceCommand = `sh '${serviceEntry.replaceAll("'", "'\\''")}' run --config '${configFile.replaceAll("'", "'\\''")}'`;
   await writeFile(
     generatedConfig,
     `
@@ -162,7 +178,7 @@ export default {
   use: { ...config.use, baseURL: runtime.baseURL },
   webServer: {
     command: ${JSON.stringify(serviceCommand)},
-    cwd: ${JSON.stringify(projectRoot)},
+    cwd: ${JSON.stringify(serviceRoot)},
     url: runtime.baseURL + '/api/health',
     reuseExistingServer: false,
     timeout: runtime.testing.command_timeout_seconds * 1000,

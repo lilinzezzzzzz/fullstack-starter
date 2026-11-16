@@ -10,7 +10,7 @@
 
 前后端放在同一个仓库，分别维护依赖和锁文件。FastAPI 提供 API，并托管 React SPA 的构建产物；依赖、数据库和前端产物准备好后，日常只运行一个 Python HTTP 服务。Node.js 只用于前端开发、检查和构建。
 
-前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh backend/entrypoints/service.sh` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。
+前端频繁修改时，可单独启动 Vite，由 Vite 将 `/api` 代理到后端。服务通过 `sh backend/entrypoints/service.sh run|start|status|stop|restart` 控制，依赖与检查直接使用 uv 和 pnpm，不引入 Makefile 或双进程开发管理器。
 
 ## 技术选型
 
@@ -83,8 +83,9 @@ fullstack-starter/
 │   ├── entrypoints/                  # 后端 Shell 与 Python 可执行入口
 │   │   ├── __init__.py
 │   │   ├── cli.py                    # 配置/OpenAPI 导出、迁移、备份命令
-│   │   ├── service.sh                # 定位环境并前台启动，Ctrl+C 停止
-│   │   └── service.py               # TOML 配置与前台 Uvicorn 启动
+│   │   ├── service.sh                # 定位环境并转发服务子命令
+│   │   ├── service.py                # TOML 配置、前台运行与后台启停
+│   │   └── service_control.py        # 实例身份、锁及本地认证控制通道
 │   ├── migrations/
 │   │   ├── __init__.py               # 迁移包，不在导入时执行迁移
 │   │   ├── operations.py             # Alembic 配置、head 查询、显式升级
@@ -111,13 +112,14 @@ fullstack-starter/
 │   │   └── types/api.generated.d.ts   # 自动生成，随源码维护
 │   ├── e2e/welcome.spec.ts
 │   └── dist/                         # 构建输出，不纳入 Git
+├── .run/                             # instance.json、run.lock、control.lock、console.log
 ├── .data/                            # app.sqlite3、app.sqlite3.lock、backups/
 └── logs/                             # app.log
 ```
 
 后端与前端各自维护依赖；根目录不增加前端工作区包或统一运行器。随附目录及常见依赖、构建、日志、SQLite 辅助文件和私有文件模式被 Git 忽略；自定义运行路径需同步核对忽略规则。
 
-`backend/entrypoints/` 集中存放后端可执行入口，`scripts/` 存放项目生成等工程工具。`service.sh` 从自身位置向上两级定位项目根目录，再通过 uv 进入后端环境运行 `entrypoints.service`；`service.py` 读取应用配置、装配日志及工厂，然后直接调用 `uvicorn.run()`。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用。依赖方向为入口和工具调用应用，`app/` 保留运行基础和业务分层，不反向依赖可执行入口。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
+`backend/entrypoints/` 集中存放后端可执行入口，`scripts/` 存放项目生成等工程工具。`service.sh` 从自身位置向上两级定位项目根目录，再通过 `uv run --no-sync` 查询预装的 Python 解释器，切入后端目录并直接 `exec` 该解释器运行 `entrypoints.service`。uv 查询完成后退出，不常驻转发信号，Shell 启动 PID 即实际服务 PID，启停命令不触发依赖同步；`service.py` 解析必填的 `run/start/status/stop/restart`，未指定 `--config` 时读取 `configs/app.toml`。前台 `run` 与后台子进程都读取同一 Python loader、装配日志及工厂，通过 `uvicorn.Server.run()` 运行；`service_control.py` 负责实例身份、锁与认证控制通道，应用模块不依赖服务管理代码。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用。依赖方向为入口和工具调用应用，`app/` 保留运行基础和业务分层，不反向依赖可执行入口。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
 
 `backend/entrypoints/cli.py` 作为 `entrypoints.cli` 运行，处理配置/OpenAPI 导出、数据库维护命令的参数、对象组装和事件循环边界；具体能力仍由应用配置、`app/maintenance/` 与 `backend/migrations/` 提供。应用模块不导入 CLI，前端工程工具通过子进程调用该入口。
 
@@ -162,7 +164,7 @@ SQLite 完整性基线的依据见[数据库指南](database.md#sqlite-版本要
 
 生成、审查、旧数据回归、迁移脚本能力及恢复边界统一见[数据库指南](database.md#迁移生成审查与验证)。测试中真实历史重放与合成机制验证分开，baseline 的空表断言只针对 `0001_baseline`。
 
-应用 lifespan 与离线升级持有同一个数据库文件锁，防止相同数据库的重复服务或迁移并发；启动时先检查数据库存在，关闭连接后释放锁。维护前按 Ctrl+C 停止服务。锁路径从实际数据库路径派生，例如 `.data/app.sqlite3.lock`，文件可保留，运行期间不删除；该机制只约束使用它的本机进程，其他数据库使用者也必须先停止。
+应用 lifespan 与离线升级持有同一个数据库文件锁，防止相同数据库的重复服务或迁移并发；启动时先检查数据库存在，关闭连接后释放锁。维护前使用同一配置执行 `stop`，或在前台服务终端按 Ctrl+C，并确认清理完成。锁路径从实际数据库路径派生，例如 `.data/app.sqlite3.lock`，文件可保留，运行期间不删除；该机制只约束使用它的本机进程，其他数据库使用者也必须先停止。
 
 `maintenance/backup.py` 的 `DatabaseBackup` 接收配置，异步创建并校验独占命名的快照；CLI 负责参数、组装和事件循环。备份对象不管理服务状态，停服、版本匹配与恢复副本的操作步骤见[数据库指南](database.md#数据库与备份)。
 
@@ -199,7 +201,17 @@ FastAPI 原生 telemetry 使用应用显式创建的本地 SDK `TracerProvider` 
 
 随附 TOML 绑定 `127.0.0.1:18001`，Vite 使用 `127.0.0.1:5173` 并代理到后端。使用 Vite 时设置 `serve_frontend = false`；切回完整应用时设置 `serve_frontend = true` 并构建。Host 与 Origin 允许列表保护本机入口；局域网或远程共享需单独设计认证和访问策略。
 
-服务始终单 worker，由 sh 入口在前台运行。Uvicorn 处理 Ctrl+C、SIGTERM 与优雅关闭；不创建后台子进程、PID 文件、就绪管道或启停轮询。重复服务和端口占用均明确失败，不按端口选择或终止进程；重启通过停止后再次执行启动命令完成。
+服务始终单 worker，Shell 只定位环境并转发参数，Python 入口提供五个必填子命令。`run` 前台运行，`start` 以独立会话启动同一 `run` 路径，等待该实例的 Uvicorn 已启动且健康 API 返回数据库正常；只创建进程不算成功。后台标准输出与错误追加到项目根 `.run/console.log`，启动失败给出该路径及应用日志位置。不会执行依赖安装、数据库迁移或前端构建。
+
+项目根目录固定使用 `.run/control.lock` 控制命令锁、`.run/run.lock` 运行实例锁及 `.run/instance.json` 状态文件。一个项目只允许一个实例，不按配置路径、数据库或端口划分实例；`--config` 只能选择当前单实例使用的配置，不提供并行多配置运行。控制命令锁以非阻塞方式序列化 `start/stop/restart`，并发命令明确报错；实例锁覆盖前后台完整运行与末尾日志清理。运行期间不删除锁文件。退出正常清理状态记录，进程意外退出后的遗留记录只有在实例锁空闲时才视为失效，下次运行会替换；不凭记录中的 PID 判断进程身份。
+
+实例控制通道绑定 `127.0.0.1` 的随机 TCP 端口，与 HTTP 服务分离，不增加业务 API。0600 状态文件记录控制端口、随机实例凭据、PID、UTC 启动时间、完整 Python 启动命令、项目根、规范化配置路径及配置指纹，通过临时 `instance.json.pending` 原子替换写入，凭据不进入参数、日志或 Git。控制协议有固定消息大小、单次连接超时及轮询间隔。只有凭据、PID 与指纹均匹配的请求才生效，停止时由目标进程向自身发送一次 SIGINT；不从外部按端口或孤立 PID 发信号。
+
+`status` 区分实例阶段、健康、配置变化、控制不可达和已停止；健康为退出码 0，已停止为 3，其余为 1，非法参数为 2。重复启动健康且配置一致的实例、重复停止已停止实例均成功。配置内容改变时 `start` 拒绝静默复用，`restart` 可通过同一配置路径停止旧实例后应用新值；其他项目或配置路径不得管理当前实例。修改配置路径前必须先停旧实例；数据库配置变更仍需先停服并准备数据库，固定 `.run/` 不随数据库切换。
+
+`[service]` 显式设置启动和停止等待期限，停止期限必须大于 Uvicorn 优雅关闭期限。停止需等待实例锁释放，此时数据库连接、数据库操作锁和日志均已清理。启动失败只回收本次创建的子进程；停止或回收超时保留实例信息并报错，不自动强杀，`restart` 不继续启动。该入口不提供开机自启、崩溃拉起或前后端统一管理。
+
+Uvicorn 运行期间保留原生信号处理；返回后的日志排空与控制线程关闭阶段临时忽略重复 SIGINT，完成清理后恢复原处理器，避免退出时的重复信号打断实例记录清理。
 
 E2E 由 Playwright 向自有服务进程组发送 SIGINT，沿用前台 Ctrl+C 的原生关闭路径，使服务入口的日志排空与 Python 退出清理完成。运行器收到 SIGINT/SIGTERM 或命令超时时，也先向自有子进程组发送 SIGINT，保留既有等待期限与 SIGKILL 兜底。当前 Uvicorn 在优雅关闭后重新触发原信号；SIGTERM 的默认动作会直接终止解释器，可能跳过入口的 `finally`、遗留 Loguru 队列的 semaphore 并丢失末尾日志，因此不用于 E2E 的正常收尾。强制终止不保证资源清理或日志完整写入。
 
@@ -207,18 +219,18 @@ E2E 由 Playwright 向自有服务进程组发送 SIGINT，沿用前台 Ctrl+C �
 
 ## V1 范围与验收
 
-| V1 内容    | 验收行为                                                             |
-| ---------- | -------------------------------------------------------------------- |
-| Hello 示例 | 唯一示例页面与 API，展示真实连通状态、加载、错误与重试               |
-| 后端基础   | 应用工厂、严格配置、健康检查、统一错误、链路标识与日志               |
-| 数据基础   | AsyncSession、显式事务、版本检查、初始迁移和手动备份                 |
-| 运行管理   | 单 FastAPI 服务、前端托管、可选 Vite、sh 前台启动与 Uvicorn 优雅关闭 |
-| 接口协作   | 不连接数据库的 OpenAPI 导出、生成类型和一致性检查                    |
-| 工程质量   | 格式、lint、类型、后端与页面测试、运行和恢复说明                     |
+| V1 内容    | 验收行为                                                                   |
+| ---------- | -------------------------------------------------------------------------- |
+| Hello 示例 | 唯一示例页面与 API，展示真实连通状态、加载、错误与重试                     |
+| 后端基础   | 应用工厂、严格配置、健康检查、统一错误、链路标识与日志                     |
+| 数据基础   | AsyncSession、显式事务、版本检查、初始迁移和手动备份                       |
+| 运行管理   | 单 FastAPI 服务、前端托管、可选 Vite、前台运行/后台启停与 Uvicorn 优雅关闭 |
+| 接口协作   | 不连接数据库的 OpenAPI 导出、生成类型和一致性检查                          |
+| 工程质量   | 格式、lint、类型、后端与页面测试、运行和恢复说明                           |
 
 V1 不包含 CRUD 应用、业务表、登录权限、任务队列、Agent/RAG、对象存储、多租户、Docker 或 CI 模板，后续按实际任务增加。
 
-后端测试使用独立临时配置、SQLite 和日志，覆盖事务回滚、锁等待、并发会话隔离、取消清理、备份、静态回退和真实启停。页面测试由 Playwright 通过 sh 启动独立前台服务，等待健康检查并在结束后优雅关闭，覆盖真实 API、刷新、404、加载、重试、键盘和窄屏；自动化以 Chromium 为基线。
+后端测试使用独立临时配置、SQLite 和日志，覆盖事务回滚、锁等待、并发会话隔离、取消清理、备份、静态回退和真实启停。后端服务测试和页面测试均使用独立临时后端项目副本，固定 `.run/` 属于该副本；只复用已安装依赖，不复用日常服务状态。页面测试由 Playwright 通过副本的 sh 启动独立前台服务，等待健康检查并在结束后优雅关闭，覆盖真实 API、刷新、404、加载、重试、键盘和窄屏；自动化以 Chromium 为基线。
 
 E2E 的构建输出也位于本次临时目录，运行器强制替换入口配置中的输出位置并关闭目录自动清空，不重建日常 frontend/dist。独立 Playwright 配置会提示使用统一 E2E 入口。
 

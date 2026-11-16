@@ -239,6 +239,7 @@ ROOT_PROJECT_FILES = (
     "backend/entrypoints/__init__.py",
     "backend/entrypoints/cli.py",
     "backend/entrypoints/service.py",
+    "backend/entrypoints/service_control.py",
     "backend/entrypoints/service.sh",
     "backend/uv.lock",
     "backend/alembic.ini",
@@ -307,6 +308,7 @@ def copy_source(target: Path, excluded: list[Path]) -> None:
         "rsync",
         "-a",
         "--exclude=.git",
+        "--exclude=/.run/",
         "--exclude=.env*",
         "--exclude=.secrets*",
         f"--exclude-from={PROJECT_ROOT / '.gitignore'}",
@@ -321,7 +323,7 @@ def copy_source(target: Path, excluded: list[Path]) -> None:
 
 
 def ignore_runtime_paths(target: Path, directories: list[Path]) -> None:
-    paths = [(path, "/") for path in directories]
+    paths = [(Path(".run"), "/"), *((path, "/") for path in directories)]
     patterns = []
     for path, suffix in paths:
         if "\n" in str(path) or "\r" in str(path):
@@ -489,7 +491,7 @@ def main() -> None:
     print("  pnpm --dir frontend build")
     print("  uv run --directory backend python -m entrypoints.cli db-check")
     print("  uv run --directory backend python -m entrypoints.cli db-upgrade")
-    print("  sh backend/entrypoints/service.sh")
+    print("  sh backend/entrypoints/service.sh run")
 
 
 if __name__ == "__main__":
