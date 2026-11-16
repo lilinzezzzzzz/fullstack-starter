@@ -4,6 +4,25 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-16 新根入口的日常重启、停止与启动实测
+
+基于提交 `b5fe86989a04f2741dba0e10daf469c24e3caa8e`，按用户授权，使用新根入口 `sh entrypoints/service.sh` 对当前项目依次执行 `restart`、`stop`、`start`。全部使用默认 `configs/app.toml`、日常 `.run/`、`.data/app.sqlite3` 和 `logs/app.log`；本条记录真实日常实例，非临时副本测试。环境为 macOS、Python 3.14.7，浏览器检查使用 Node.js 24.22.0 下的 Playwright CLI 与 Chrome，时间均为北京时间（UTC+8）。
+
+| 阶段         | 实际时间          | 观察结果                                                                                              |
+| ------------ | ----------------- | ----------------------------------------------------------------------------------------------------- |
+| 初始状态     | 执行前            | PID 89526，`status` 为 `healthy`、退出码 0，健康接口正常                                              |
+| `restart`    | 23:30:43–23:30:45 | 命令返回 0，先停止 PID 89526，再启动 PID 44804；新实例为 `healthy`，旧 PID 经 `ps` 确认退出且已被回收 |
+| `stop`       | 23:30:47          | 命令返回 0；`status` 为 `stopped`、退出码 3；PID 44804 已退出并被回收，HTTP 端口停止接受连接          |
+| 最后 `start` | 23:30:51          | 命令返回 0，启动 PID 44973；`status` 为 `healthy`、退出码 0，保持后台运行                             |
+
+各阶段使用 `fcntl.flock(LOCK_EX | LOCK_NB)` 检查现有锁文件；可取得时立即解锁，不删除或重建文件。初始、重启后和最终运行时，`.run/run.lock` 与 `.data/app.sqlite3.lock` 被运行实例持有，`.run/control.lock` 在命令完成后空闲。停止后，三个锁均可重新取得，确认已释放，文件 inode 与执行前一致；`.run/instance.json` 已删除，未遗留 `instance.json.pending`。最终实例重新生成 0600 的记录，`command` 为不含内部 `--settings-fd` 的规范化公开启动命令。
+
+重启后及最终启动后，`/api/health` 返回 200 和 `{"status":"ok","database":"ok"}`，`/api/v1/hello` 返回 200 和 `{"message":"Hello World"}`；首页、按浏览器导航头访问的 `/welcome` 及页面引用的静态资源均返回 200。最终实例又经过真实浏览器检查：首页显示“前后端已连通”和“Hello World”，“重新检查”按钮正常，直接访问和刷新 `/welcome` 正常；浏览器中的两个 API 请求均为 200，控制台为 0 个错误、0 个警告。
+
+本轮新增日志完整包含两次 `Application shutdown complete`，以及 PID 89526、44804 各自的 `Finished server process`，与进程回收检查一致。所有进程控制均通过新根 Shell 入口，没有按端口猜测进程、强杀、删除锁文件、升级数据库或重新构建日常前端。验证浏览器和临时脚本、结果摘要均已清理，实例凭据未写入文档或 Git；结束时 PID 44973 保持 `healthy`，Git 工作区干净。
+
+本次仅补记以上实际生命周期、HTTP 和浏览器验证，未重跑完整 pytest 或隔离 E2E；先前 372 项后端回归属于上一条实现验证记录的范围。本次文档更新与提交不再执行服务启停。
+
 ## 2026-11-16 服务管理 review 核验与修复
 
 本轮在保留现有未提交改动和日常服务的前提下，以当前代码核对评审。同步版本已经包含 Ctrl+C 清理超时保留原异常、SIGTERM 143、Uvicorn 启动失败统一返回 1、单次 lstat 处理记录消失，以及测试 helper 合并和尽力停止泄漏实例的修复；这些改动均保留。本次只修改当前项目，历史条目按各自当时的实现和验证范围解读。
