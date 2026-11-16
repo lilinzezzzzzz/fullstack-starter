@@ -89,7 +89,7 @@ def validate_runtime_paths(
     logging_filename: str,
     extra_private_paths: Mapping[str, str | Path] | None = None,
 ) -> None:
-    """校验公共输出与私有路径；业务扩展不得覆盖内置私有路径的名称。"""
+    """校验公共输出与私有路径；业务扩展不得覆盖内置路径的名称。"""
     project_root = project_root.resolve()
     service_directory = project_root / ".run"
     if service_directory.is_symlink():
@@ -110,7 +110,7 @@ def validate_runtime_paths(
         "logging.directory": (project_root / logging_directory).resolve(),
     }
     for field, value in (extra_private_paths or {}).items():
-        if field in private_paths:
+        if field == "frontend_dir" or field in private_paths:
             raise ValueError(f"Extra private path must not override {field}")
         private_paths[field] = (project_root / value).resolve()
     source_paths = [project_root / name for name in (*SOURCE_DIRECTORIES, *SOURCE_FILES)]

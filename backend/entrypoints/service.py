@@ -112,6 +112,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.settings_fd is not None and (args.command != "run" or args.settings_fd < 3):
         parser.error("Startup snapshot descriptors are only valid for background run")
+    previous_term = signal.signal(signal.SIGTERM, exit_from_sigterm)
     try:
         controller = ServiceController(config_file=args.config)
         if args.command == "run":
@@ -124,6 +125,8 @@ def main() -> int:
         return 130
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(1, f"Error: {exc}\n")
+    finally:
+        signal.signal(signal.SIGTERM, previous_term)
 
 
 if __name__ == "__main__":

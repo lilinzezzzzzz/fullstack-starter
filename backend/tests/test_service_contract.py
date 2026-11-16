@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from http.client import BadStatusLine
@@ -332,8 +333,9 @@ def test_restart_child_consumes_frozen_document(service_project, tmp_path, monke
 
 @pytest.mark.integration
 @pytest.mark.parametrize("action", ["start", "run", "status", "stop", "restart"])
-def test_interrupted_lock_wait_returns_130_and_preserves_instance(
-    service_project, tmp_path, action
+@pytest.mark.parametrize("signum,expected", [(signal.SIGINT, 130), (signal.SIGTERM, 143)])
+def test_interrupted_lock_wait_preserves_instance(
+    service_project, tmp_path, action, signum, expected
 ):
     path = isolated_config(tmp_path / "source")
     upgrade_database(load_settings(path))
@@ -345,9 +347,9 @@ def test_interrupted_lock_wait_returns_130_and_preserves_instance(
         with service_lock(runtime_path("control.lock")):
             child = observed_command(service_project, marker, action, path)
             wait_for_marker(marker, child)
-            os.killpg(child.pid, signal.SIGINT)
+            os.killpg(child.pid, signum)
             stdout, stderr = child.communicate(timeout=10)
-            assert child.returncode == 130, stdout + stderr
+            assert child.returncode == expected, stdout + stderr
             assert "Traceback" not in stderr
         assert read_record() == previous
     finally:
@@ -572,10 +574,10 @@ def test_foreground_start_failure_releases_state(service_project, tmp_path, fail
             assert listener.getsockname()[1] == load_settings(path).server.port
 
 
-@pytest.mark.parametrize("interrupted", [True, False])
+@pytest.mark.parametrize("original_failure", ["sigint", "sigterm", "error"])
 @pytest.mark.parametrize("cleanup_failure", ["timeout", "signal"])
 def test_startup_cleanup_timeout_preserves_original_failure(
-    service_project, tmp_path, monkeypatch, capsys, interrupted, cleanup_failure
+    service_project, tmp_path, monkeypatch, capsys, original_failure, cleanup_failure
 ):
     path = isolated_config(tmp_path / "source")
     signals = []
@@ -595,25 +597,27 @@ def test_startup_cleanup_timeout_preserves_original_failure(
             raise subprocess.TimeoutExpired("synthetic-child", timeout)
 
     def cancel(_seconds):
-        if interrupted:
+        if original_failure == "sigint":
             raise KeyboardInterrupt
+        if original_failure == "sigterm":
+            signal.raise_signal(signal.SIGTERM)
         raise service_control.ServiceError("Startup timed out: synthetic original cause")
 
     monkeypatch.setattr(service_control.subprocess, "Popen", lambda *a, **kw: StalledChild())
     monkeypatch.setattr(service_control, "read_record", lambda: None)
     monkeypatch.setattr(service_control.time, "sleep", cancel)
     monkeypatch.setattr("sys.argv", ["service", "start", "--config", str(path)])
-    if interrupted:
+    if original_failure == "sigint":
         assert service.main() == 130
     else:
         with pytest.raises(SystemExit) as error:
             service.main()
-        assert error.value.code == 1
+        assert error.value.code == (143 if original_failure == "sigterm" else 1)
     stderr = capsys.readouterr().err
     assert (
         "Startup cleanup timed out" if cleanup_failure == "timeout" else "Startup cleanup failed"
     ) in stderr
-    if not interrupted:
+    if original_failure == "error":
         assert "synthetic original cause" in stderr
     assert signals == [signal.SIGINT]
 
@@ -719,7 +723,10 @@ raise SystemExit(service.main())
 
 
 @pytest.mark.integration
-def test_interrupt_during_startup_wait_reclaims_only_owned_child(service_project, tmp_path):
+@pytest.mark.parametrize("signum,expected", [(signal.SIGINT, 130), (signal.SIGTERM, 143)])
+def test_interrupt_during_startup_wait_reclaims_only_owned_child(
+    service_project, tmp_path, signum, expected
+):
     path = isolated_config(tmp_path / "source")
     data = read_config(path)
     data["allowed_hosts"] = []  # 服务能启动，但父命令不能通过 HTTP 就绪检查。
@@ -729,9 +736,9 @@ def test_interrupt_during_startup_wait_reclaims_only_owned_child(service_project
     try:
         wait_for_marker(tmp_path / "waiting", child)
         assert read_record() is not None
-        os.killpg(child.pid, signal.SIGINT)
+        os.killpg(child.pid, signum)
         stdout, stderr = child.communicate(timeout=10)
-        assert child.returncode == 130, stdout + stderr
+        assert child.returncode == expected, stdout + stderr
         assert not instance_active()
         assert not runtime_path("instance.json").exists()
     finally:
@@ -740,8 +747,9 @@ def test_interrupt_during_startup_wait_reclaims_only_owned_child(service_project
 
 @pytest.mark.integration
 @pytest.mark.parametrize("action", ["stop", "restart"])
+@pytest.mark.parametrize("signum,expected", [(signal.SIGINT, 130), (signal.SIGTERM, 143)])
 def test_interrupt_during_stop_wait_preserves_instance(
-    service_project, tmp_path, monkeypatch, action
+    service_project, tmp_path, monkeypatch, action, signum, expected
 ):
     path = isolated_config(tmp_path / "source")
     settings = load_settings(path)
@@ -758,9 +766,9 @@ def test_interrupt_during_stop_wait_preserves_instance(
             marker = tmp_path / "waiting"
             child = observed_wait_command(service_project, marker, action, path)
             wait_for_marker(marker, child)
-            os.killpg(child.pid, signal.SIGINT)
+            os.killpg(child.pid, signum)
             stdout, stderr = child.communicate(timeout=10)
-            assert child.returncode == 130, stdout + stderr
+            assert child.returncode == expected, stdout + stderr
             assert runtime_path("instance.json").read_bytes() == previous
             assert signals == [(os.getpid(), signal.SIGINT)]
             assert not runtime_path("console.log").exists()
@@ -933,13 +941,17 @@ def test_runtime_records_may_disappear_during_validation(
     assert runtime_path(filename) == target
 
 
-@pytest.mark.parametrize("field", ["data_dir", "backup_directory", "logging.directory"])
-def test_extra_private_paths_cannot_hide_builtin_storage(service_project, tmp_path, field):
+@pytest.mark.parametrize(
+    "field", ["frontend_dir", "data_dir", "backup_directory", "logging.directory"]
+)
+def test_extra_private_paths_cannot_hide_builtin_paths(service_project, tmp_path, field):
     settings = load_settings(isolated_config(tmp_path / "source"))
     with pytest.raises(ValueError, match="must not override"):
         validate_runtime_paths(
             service_project,
-            frontend_dir=settings.frontend_dir,
+            frontend_dir=service_project / "backend"
+            if field == "frontend_dir"
+            else settings.frontend_dir,
             frontend_clean_output=False,
             data_dir=settings.data_dir,
             backup_directory=settings.backup_directory,
@@ -949,3 +961,79 @@ def test_extra_private_paths_cannot_hide_builtin_storage(service_project, tmp_pa
             logging_filename=settings.logging.filename,
             extra_private_paths={field: tmp_path / "replacement"},
         )
+
+
+def test_sigterm_during_command_dispatch_returns_143(service_project):
+    code = """
+import signal, sys
+from entrypoints import service
+class Controller:
+    def __init__(self, **kwargs):
+        pass
+    def execute(self, action):
+        signal.raise_signal(signal.SIGTERM)
+service.ServiceController = Controller
+sys.argv = ["service", "status"]
+raise SystemExit(service.main())
+"""
+    result = run_service_command(
+        [sys.executable, "-c", code],
+        cwd=service_project / "backend",
+        command_timeout=5,
+        shutdown_timeout=1,
+    )
+    assert result.returncode == 143, result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("action", ["start", "run", "status", "stop", "restart"])
+def test_command_signal_handler_is_installed_and_restored(monkeypatch, action):
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def dispatch(_action):
+        assert signal.getsignal(signal.SIGTERM) == service.exit_from_sigterm
+        return 0
+
+    controller = SimpleNamespace(execute=dispatch)
+    monkeypatch.setattr(service, "ServiceController", lambda **kwargs: controller)
+    monkeypatch.setattr(service, "run_service", lambda *args, **kwargs: dispatch("run"))
+    monkeypatch.setattr(sys, "argv", ["service", action])
+    assert service.main() == 0
+    assert signal.getsignal(signal.SIGTERM) == previous
+
+
+@pytest.mark.parametrize("initial", [signal.SIGINT, signal.SIGTERM])
+@pytest.mark.parametrize("repeated", [signal.SIGINT, signal.SIGTERM])
+def test_startup_cleanup_ignores_repeated_exit_signals(tmp_path, monkeypatch, initial, repeated):
+    path = isolated_config(tmp_path / "source")
+    signals = []
+    previous = {value: signal.getsignal(value) for value in (signal.SIGINT, signal.SIGTERM)}
+
+    class Child:
+        pid = 999999
+
+        def poll(self):
+            return None
+
+        def send_signal(self, signum):
+            signals.append(signum)
+
+        def wait(self, *, timeout):
+            signal.raise_signal(repeated)
+            return 0
+
+    def interrupt(_seconds):
+        signal.raise_signal(initial)
+
+    monkeypatch.setattr(service_control.subprocess, "Popen", lambda *args, **kwargs: Child())
+    monkeypatch.setattr(service_control, "read_record", lambda: None)
+    monkeypatch.setattr(service_control.time, "sleep", interrupt)
+    monkeypatch.setattr(sys, "argv", ["service", "start", "--config", str(path)])
+    if initial == signal.SIGINT:
+        assert service.main() == 130
+    else:
+        with pytest.raises(SystemExit) as result:
+            service.main()
+        assert result.value.code == 143
+    assert signals == [signal.SIGINT]
+    assert {value: signal.getsignal(value) for value in previous} == previous

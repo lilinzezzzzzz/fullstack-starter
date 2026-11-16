@@ -53,7 +53,7 @@ Python 3.14 使用原生 `tomllib` 解析 TOML 1.0，再由 Pydantic 统一校�
 - 源码保护覆盖 根 `entrypoints/`（服务 Shell 入口）、`backend/`（包含 Python 入口）、`frontend/`、`scripts/`、`configs/`、`docs/`、`e2e/`、`.git/`、`.agents/`、`.codex/`、`.aws/` 及项目入口文件；根 `.prettierrc.toml` 和 `.prettierignore` 同样受保护，不能作为输出或私有运行目录。完整列表由路径策略模块维护。目录检查解析符号链接并折叠大小写，比较包含关系的两个方向。
 - 自动清空只允许实际的 `frontend/dist`，其子目录或指向外部的符号链接不能启用自动清空。其他合法输出位置需显式设置 `frontend_clean_output = false`。
 
-数据库、数据库操作锁与应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。服务管理目录固定为项目根 `.run/`，包含 `instance.json`、`run.lock`、`control.lock` 和 `console.log`，原子写入期间短暂使用 `instance.json.pending`；不增加 TOML 字段或环境变量来另选目录。实例记录权限为 0600，新增 UTC 启动时间和完整 Python 命令；运行阶段仍通过控制通道实时查询，不将 JSON 文件存在作为存活证据。`.run/` 不允许符号链接重定向，不能与数据、备份、应用日志、公开输出或测试临时目录混用；数据库、数据库操作锁和应用日志文件也不能通过符号链接指入 `.run/`。该目录整体由 Git 忽略。
+数据库、数据库操作锁与应用日志必须指向不同路径；同一目录下的文件名相同也会被拒绝。服务管理目录固定为项目根 `.run/`，包含 `instance.json`、`run.lock`、`control.lock` 和 `console.log`，原子写入期间短暂使用 `instance.json.pending`；不增加 TOML 字段或环境变量来另选目录。实例记录权限为 0600，记录 UTC 启动时间和不含内部描述符的规范化公开 Python 命令；运行阶段仍通过控制通道实时查询，不将 JSON 文件存在作为存活证据。`.run/` 不允许符号链接重定向，不能与数据、备份、应用日志、公开输出或测试临时目录混用；数据库、数据库操作锁和应用日志文件也不能通过符号链接指入 `.run/`。该目录整体由 Git 忽略。
 
 `testing.temporary_directory` 是创建独占子目录的父位置，允许 `/tmp` 这样的外部父目录，但不得直接使用项目根目录、源码、固定 `.run/` 或公开输出目录。E2E 强制使用本次临时目录中的构建、数据和日志，不复用日常产物。
 
@@ -118,6 +118,8 @@ SQLite 完整性基线及检查方式统一见[数据库指南](database.md#sqli
 环境白名单只是第三方参数通道，不能作为第二个配置来源。未使用的 exporter、资源探测器和自动插桩入口保持不配置，外部同名前缀变量被丢弃。该入口管理整个单应用进程；如果宿主在导入 `app` 前已初始化第三方 OTel 实现，其先前副作用无法由应用撤销，运行入口应遵循本项目的 sh/CLI 顺序。
 
 随附日志格式继续使用 `{extra[trace_id]}`，非请求日志使用 `-` 占位；正常响应和错误响应均返回当前服务端上下文的标准 `traceparent` 头，其中 trace ID 与错误体、500 日志一致。不返回 `X-Trace-ID`，也不原样回显上游 parent ID；不增加响应头名称配置开关。请求头缺失或无效时由 SDK 创建上下文，应用层没有 UUID 生成回退。trace ID 不再受 UUIDv7 格式约束，备份文件的 UUIDv7 命名不受影响。
+
+额外私有路径校验使用独立标签，不能使用 `frontend_dir`、`data_dir`、`backup_directory` 或 `logging.directory` 覆盖内置路径；公开输出必须始终以原始 frontend_dir 参数进行保护校验。
 
 `Settings.source_file` 是由 loader 或原始文档校验入口绑定的只读来源元信息，不是 TOML 字段，不进入配置导出或 Schema。直接构造或 `model_validate` 得到的 Settings 没有来源，服务入口访问该属性时明确报错，不默认使用其他配置文件。
 

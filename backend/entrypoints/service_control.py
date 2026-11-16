@@ -484,6 +484,10 @@ class ServiceController:
         finally:
             pending_error = sys.exception()
             if not ready and process is not None:
+                previous_signals = {
+                    signum: signal.signal(signum, signal.SIG_IGN)
+                    for signum in (signal.SIGINT, signal.SIGTERM)
+                }
                 try:
                     if process.poll() is None:
                         process.send_signal(signal.SIGINT)
@@ -497,6 +501,9 @@ class ServiceController:
                         raise ServiceError(message) from exc
                     # 保留在途异常，尤其是决定退出码 130 的 KeyboardInterrupt。
                     print(message, file=sys.stderr)
+                finally:
+                    for signum, handler in previous_signals.items():
+                        signal.signal(signum, handler)
 
     def execute(self, action: str) -> int:
         with service_lock(runtime_path("control.lock"), COMMAND_LOCK_TIMEOUT_SECONDS):
