@@ -4,6 +4,28 @@
 
 当前使用方式见 [README](../README.md)，当前架构见 [设计方案](design.md)，配置字段见 [配置约定](configuration.md)。
 
+## 2026-11-16 日常实例的实际启动、重启与停止验证
+
+基于实现提交 `5468e3957b599d37449085e3f2d15d629498367a`，按用户明确授权，在当前项目实际执行 `sh backend/entrypoints/service.sh start`、`restart`、`stop`，最后重新 `start` 并保持运行。全部使用默认 `configs/app.toml`、`.run/`、`.data/app.sqlite3` 和 `logs/app.log`；本条记录日常实例的真实操作，时间均为北京时间（UTC+8）。环境为 macOS、Python 3.14.7，浏览器检查使用 Node.js 24.22.0 下的 Playwright CLI 与 Chrome。
+
+| 操作         | 实际时间          | 观察结果                                                                                            |
+| ------------ | ----------------- | --------------------------------------------------------------------------------------------------- |
+| 首次 `start` | 14:56:15          | 启动 PID 48666，命令返回 0；`status` 返回 `healthy`、退出码 0                                       |
+| `restart`    | 15:02:40–15:02:41 | 命令返回 0，先停止 PID 48666，再启动 PID 57186；新实例 `healthy`，旧 PID 经 `ps` 确认已退出并被回收 |
+| `stop`       | 15:02:44          | 命令返回 0；`status` 返回 `stopped`、退出码 3；PID 57186 已退出并被回收，HTTP 端口停止接受连接      |
+| 最后 `start` | 15:02:48          | 启动 PID 57333，命令返回 0；最终 `status` 为 `healthy`、退出码 0，按用户要求保持后台运行            |
+
+首次启动后，`/api/health` 返回 200，响应为 `{"status":"ok","database":"ok"}`；`/api/v1/hello` 返回 200 和 `{"message":"Hello World"}`。首页、按浏览器导航头访问的 `/welcome` 及首页引用的静态资源均返回 200；未知 API 与缺失资源仍返回真实 404。Playwright CLI 实际打开首页、点击“重新检查”、直接访问并刷新 `/welcome`，页面显示“前后端已连通”和“Hello World”，浏览器控制台为 0 个错误、0 个警告。浏览器会话及其临时文件已关闭、清理，服务继续运行。
+
+生命周期验证使用标准库 `fcntl.flock(LOCK_EX | LOCK_NB)` 探测现有锁文件，仅在可取得时立即解锁，不删除、重建锁文件，也不执行数据库升级：
+
+- 初始运行、重启后和最终启动后，`.run/run.lock` 与 `.data/app.sqlite3.lock` 均被运行服务持有，`.run/control.lock` 在命令完成后空闲。
+- 停止后，三个锁文件均可重新取得，确认锁已释放；文件保留且 inode 与验证前一致。
+- 停止时 `.run/instance.json` 已移除，未遗留 `instance.json.pending`；重新启动后生成新实例记录。
+- 重启与停止分别完整记录 `Application shutdown complete`，以及 PID 48666、57186 对应的 `Finished server process`，与进程退出检查一致。
+
+重启后及最终启动后均重新检查健康接口、Hello API、首页和 `/welcome`，全部通过。验证期间没有强杀进程、删除锁文件、迁移数据库或重新构建前端；临时验证脚本和结果摘要已清理，实例凭据未写入文档或 Git。结束时 PID 57333 保持运行，运行文件和日志继续按忽略规则保留。本条仅补记以上已执行的日常环境与浏览器检查，未重复执行完整 pytest 或隔离 E2E。
+
 ## 2026-11-16 固定 .run 目录与项目级单实例
 
 服务管理文件从数据库旁调整到项目根固定 `.run/`：`instance.json` 保存 PID、UTC 启动时间、完整 Python 启动命令、配置路径和认证控制信息，`run.lock` 覆盖进程运行及退出清理，`control.lock` 协调启停命令，`console.log` 追加后台标准输出和启动错误。原子写入短暂使用 `instance.json.pending`，正常退出移除实例记录并保留锁文件。数据库及其维护锁继续位于 `.data/`，应用日志继续使用 `[logging]`，随附位置为 `logs/app.log`。
