@@ -54,7 +54,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "python -m entrypoints.cli db-check" in result.stdout
-    assert "sh backend/entrypoints/service.sh run" in result.stdout
+    assert "sh entrypoints/service.sh run" in result.stdout
     settings = exported_settings(target)
     assert settings["application"]["title"] == "ledger-app"
     assert settings["server"]["port"] == 18123
@@ -98,13 +98,14 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert not (target / "backend/app/frontend.py").exists()
     assert not (target / "backend/app/main.py").exists()
     assert (target / "scripts/create_project.py").is_file()
-    assert (target / "backend/entrypoints/service.sh").is_file()
+    assert (target / "entrypoints/service.sh").is_file()
     assert (target / "backend/entrypoints/__init__.py").is_file()
     assert (target / "backend/entrypoints/service.py").is_file()
     assert (target / "backend/entrypoints/service_control.py").is_file()
     assert (target / "backend/entrypoints/cli.py").is_file()
     assert not (target / "backend/app/cli.py").exists()
-    assert not (target / "entrypoints").exists()
+    assert not (target / "entrypoints/__init__.py").exists()
+    assert not (target / "backend/entrypoints/service.sh").exists()
     assert not (target / "backend/tools").exists()
     for module in ("entrypoints.service", "entrypoints.cli"):
         help_result = subprocess.run(
@@ -356,7 +357,12 @@ def test_external_runtime_path_is_rejected_without_touching_its_data(tmp_path: P
 @pytest.mark.parametrize(
     "field", ["logging.directory", "frontend_dir", "testing.temporary_directory"]
 )
-def test_creator_rejects_source_paths_before_copying(tmp_path: Path, field: str) -> None:
+@pytest.mark.parametrize("destination", ["backend/app", "entrypoints"])
+def test_creator_rejects_source_paths_before_copying(
+    tmp_path: Path,
+    field: str,
+    destination: str,
+) -> None:
     template = tmp_path / "template"
     result = run_creator(
         PROJECT_ROOT / "scripts/create-project.sh",
@@ -368,10 +374,10 @@ def test_creator_rejects_source_paths_before_copying(tmp_path: Path, field: str)
     config = tomllib.loads(path.read_text())
     config["frontend_clean_output"] = False
     if field == "frontend_dir":
-        config[field] = "scripts"
+        config[field] = destination
     else:
         section, name = field.split(".")
-        config[section][name] = "backend/app"
+        config[section][name] = destination
     path.write_text(tomli_w.dumps(config))
     original = (template / "backend/app/application.py").read_bytes()
     target = tmp_path / "rejected"
@@ -427,7 +433,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "/backend/app/infra/middleware.py",
         "/backend/entrypoints/service.py",
         "/backend/entrypoints/service_control.py",
-        "/backend/entrypoints/service.sh",
+        "/entrypoints/service.sh",
         "/backend/entrypoints/cli.py",
         "/frontend/src/App.tsx",
     )
@@ -453,7 +459,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/middleware.py",
         "backend/entrypoints/service.py",
         "backend/entrypoints/service_control.py",
-        "backend/entrypoints/service.sh",
+        "entrypoints/service.sh",
         "backend/entrypoints/cli.py",
         "frontend/src/App.tsx",
     ):
@@ -471,7 +477,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/middleware.py",
         "backend/entrypoints/service.py",
         "backend/entrypoints/service_control.py",
-        "backend/entrypoints/service.sh",
+        "entrypoints/service.sh",
         "backend/entrypoints/cli.py",
         "frontend/src/App.tsx",
     ):
@@ -487,7 +493,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/entrypoints/__init__.py",
         "backend/entrypoints/service.py",
         "backend/entrypoints/service_control.py",
-        "backend/entrypoints/service.sh",
+        "entrypoints/service.sh",
     ],
 )
 def test_creator_rejects_missing_required_source_without_changing_template_data(
@@ -572,3 +578,101 @@ def test_git_ignores_private_files_and_runtime_artifacts(tmp_path: Path) -> None
         check=True,
     )
     assert result.stdout.splitlines() == paths
+
+
+def test_creator_excludes_dependency_symlinks(tmp_path: Path) -> None:
+    template = tmp_path / "template"
+    created = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert created.returncode == 0, created.stderr
+    external = tmp_path / "external-dependencies"
+    external.mkdir()
+    marker = external / "keep"
+    marker.write_text("dependency cache")
+    for relative in ("backend/.venv", "frontend/node_modules"):
+        (template / relative).symlink_to(external, target_is_directory=True)
+    target = tmp_path / "generated"
+    copied = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "generated-app", "18124"),
+    )
+    assert copied.returncode == 0, copied.stderr
+    assert not (target / "backend/.venv").exists()
+    assert not (target / "frontend/node_modules").exists()
+    assert marker.read_text() == "dependency cache"
+
+
+@pytest.mark.parametrize("directory", ["private", "private/synthetic", "PRIVATE/synthetic"])
+def test_creator_rejects_private_public_output_before_copying(
+    tmp_path: Path, directory: str
+) -> None:
+    template = tmp_path / "template"
+    created = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert created.returncode == 0, created.stderr
+    config = template / "configs/app.toml"
+    document = tomllib.loads(config.read_text())
+    document.update(frontend_dir=directory, frontend_clean_output=False)
+    config.write_text(tomli_w.dumps(document))
+    target = tmp_path / "rejected"
+    rejected = run_creator(
+        template / "scripts/create-project.sh",
+        tmp_path,
+        arguments(target, "sample-app", "18124"),
+    )
+    assert rejected.returncode == 1
+    assert "protected" in rejected.stderr
+    assert not target.exists()
+    assert config.exists()
+
+
+def test_creator_excludes_obsolete_shell_even_when_template_contains_it(tmp_path: Path) -> None:
+    template = tmp_path / "template"
+    result = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert result.returncode == 0, result.stderr
+    legacy = template / "backend/entrypoints/service.sh"
+    legacy.write_text("#!/bin/sh\nexit 0\n")
+    target = tmp_path / "clean-copy"
+    result = run_creator(
+        template / "scripts/create-project.sh", tmp_path, arguments(target, "clean-copy", "18124")
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (target / "backend/entrypoints/service.sh").exists()
+    assert (target / "entrypoints/service.sh").is_file()
+    assert legacy.read_text() == "#!/bin/sh\nexit 0\n"
+
+
+@pytest.mark.parametrize("extra", ["__init__.py", "extra.py", "extra.sh", "nested"])
+def test_creator_rejects_unsupported_root_entrypoint_content(tmp_path: Path, extra: str) -> None:
+    template = tmp_path / "template"
+    result = run_creator(
+        PROJECT_ROOT / "scripts/create-project.sh",
+        tmp_path,
+        arguments(template, "template-app", "18123"),
+    )
+    assert result.returncode == 0, result.stderr
+    unsupported = template / "entrypoints" / extra
+    if extra == "nested":
+        unsupported.mkdir()
+    else:
+        unsupported.write_text("synthetic unsupported content\n")
+    target = tmp_path / "rejected"
+    result = run_creator(
+        template / "scripts/create-project.sh", tmp_path, arguments(target, "rejected-app", "18124")
+    )
+    assert result.returncode == 1
+    assert "unsupported files" in result.stderr
+    assert extra in result.stderr
+    assert not target.exists()
+    assert unsupported.exists()

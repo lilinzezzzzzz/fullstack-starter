@@ -186,6 +186,7 @@ def test_public_output_cannot_contain_private_storage(tmp_path: Path) -> None:
     [
         "backend/app",
         "backend/entrypoints",
+        "entrypoints",
         "scripts",
         "docs",
         ".git",
@@ -211,7 +212,9 @@ def test_public_output_cannot_overlap_source(tmp_path: Path, destination: str) -
         "testing.temporary_directory",
     ],
 )
-@pytest.mark.parametrize("destination", ["backend/app", ".prettierrc.toml", ".prettierignore"])
+@pytest.mark.parametrize(
+    "destination", ["backend/app", "entrypoints", ".prettierrc.toml", ".prettierignore"]
+)
 def test_runtime_paths_cannot_use_source_directories(
     tmp_path: Path, field: str, destination: str
 ) -> None:
@@ -278,7 +281,16 @@ def test_clean_output_rejects_symlinked_default_tree(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "destination",
-    ["Backend/app", "BACKEND/ENTRYPOINTS", "SCRIPTS", "DOCS", ".GIT", "LOGS", ".DATA"],
+    [
+        "Backend/app",
+        "BACKEND/ENTRYPOINTS",
+        "ENTRYPOINTS",
+        "SCRIPTS",
+        "DOCS",
+        ".GIT",
+        "LOGS",
+        ".DATA",
+    ],
 )
 def test_case_only_source_and_runtime_aliases_are_rejected(
     tmp_path: Path, destination: str

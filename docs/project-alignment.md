@@ -46,23 +46,23 @@ SQLite、本地单用户、全部必填 TOML、FastAPI 托管前端以及只维�
 
 逐项填写原项目的真实位置与证据，然后选择保留、移动、拆分或暂缓。已有清晰的模块边界可以继续使用，不为目录一致引入额外抽象。
 
-| 职责                          | 本脚手架的参考位置                                                             | 检查重点                                                                         |
-| ----------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| HTTP 参数、依赖声明和响应映射 | `backend/app/routers/`                                                         | 业务规则、写事务是否混入请求适配                                                 |
-| 业务规则和事务                | `backend/app/services/`                                                        | 业务类是否处理 Request、构造 I/O Schema 或创建基础设施                           |
-| 持久化结构与接口 Schema       | `backend/app/models/`、`backend/app/schemas/`                                  | ORM 与接口结构是否耦合，模型是否完整注册                                         |
-| 依赖组装                      | 各 Service 模块的 `new_*_service` 工厂                                         | 构造注入、请求作用域与 CLI 组装是否明确                                          |
-| 应用装配与资源生命周期        | `backend/app/application.py`                                                   | 显式 Settings 注入、装配顺序、应用级资源与 lifespan 关闭责任                     |
-| 通用基础设施适配              | `backend/app/infra/`                                                           | 数据库、日志、静态托管、中间件与异常处理是否混入业务或入口逻辑                   |
-| 底层共用工具                  | `backend/app/utils/`                                                           | 路径策略与数据库锁能否仅依赖标准库，由调用方传参，供创建器独立加载               |
-| 配置输入与定义                | `configs/app.toml`、`backend/app/config.py`                                    | 字段注释、单位、零值、来源与路径基准是否一致，固定策略与派生属性是否被误当成输入 |
-| 维护与迁移                    | `backend/app/maintenance/`、`backend/migrations/`                              | 请求路径是否执行维护，迁移是否隐式运行                                           |
-| 服务与维护 CLI 入口           | `backend/entrypoints/service.sh`、`service.py`、`service_control.py`、`cli.py` | Shell 定位、配置选择、事件循环边界与失败退出是否明确                             |
-| 项目创建器                    | `scripts/create-project.sh`、`scripts/create_project.py`                       | 移动后的关键文件、复制清单、路径保护、重命名与生成副本是否同步                   |
-| 前端请求、查询与呈现          | `frontend/src/api/`、`hooks/`、`pages/`、`components/`                         | 请求取消、重试、状态与呈现是否职责清楚                                           |
-| 构建配置与接口类型            | `frontend/scripts/project-config.mjs`、`frontend/src/types/api.generated.d.ts` | 构建是否复用后端 loader，浏览器白名单与生成类型是否受控                          |
-| 格式检查                      | 根 `.prettierrc.toml`、`.prettierignore` 与 `frontend/package.json`            | 检查和整理范围是否一致，配置查找与相对忽略路径是否因移动而变化                   |
-| 文档与协作规则                | README、`docs/`、分层 `AGENTS.md`                                              | 当前状态、目标状态和历史证据是否分开                                             |
+| 职责                          | 本脚手架的参考位置                                                                                    | 检查重点                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| HTTP 参数、依赖声明和响应映射 | `backend/app/routers/`                                                                                | 业务规则、写事务是否混入请求适配                                                 |
+| 业务规则和事务                | `backend/app/services/`                                                                               | 业务类是否处理 Request、构造 I/O Schema 或创建基础设施                           |
+| 持久化结构与接口 Schema       | `backend/app/models/`、`backend/app/schemas/`                                                         | ORM 与接口结构是否耦合，模型是否完整注册                                         |
+| 依赖组装                      | 各 Service 模块的 `new_*_service` 工厂                                                                | 构造注入、请求作用域与 CLI 组装是否明确                                          |
+| 应用装配与资源生命周期        | `backend/app/application.py`                                                                          | 显式 Settings 注入、装配顺序、应用级资源与 lifespan 关闭责任                     |
+| 通用基础设施适配              | `backend/app/infra/`                                                                                  | 数据库、日志、静态托管、中间件与异常处理是否混入业务或入口逻辑                   |
+| 底层共用工具                  | `backend/app/utils/`                                                                                  | 路径策略与数据库锁能否仅依赖标准库，由调用方传参，供创建器独立加载               |
+| 配置输入与定义                | `configs/app.toml`、`backend/app/config.py`                                                           | 字段注释、单位、零值、来源与路径基准是否一致，固定策略与派生属性是否被误当成输入 |
+| 维护与迁移                    | `backend/app/maintenance/`、`backend/migrations/`                                                     | 请求路径是否执行维护，迁移是否隐式运行                                           |
+| 服务与维护 CLI 入口           | 根 `entrypoints/service.sh`、`backend/entrypoints/` 下的 `service.py`、`service_control.py`、`cli.py` | Shell 定位、配置选择、事件循环边界与失败退出是否明确                             |
+| 项目创建器                    | `scripts/create-project.sh`、`scripts/create_project.py`                                              | 移动后的关键文件、复制清单、路径保护、重命名与生成副本是否同步                   |
+| 前端请求、查询与呈现          | `frontend/src/api/`、`hooks/`、`pages/`、`components/`                                                | 请求取消、重试、状态与呈现是否职责清楚                                           |
+| 构建配置与接口类型            | `frontend/scripts/project-config.mjs`、`frontend/src/types/api.generated.d.ts`                        | 构建是否复用后端 loader，浏览器白名单与生成类型是否受控                          |
+| 格式检查                      | 根 `.prettierrc.toml`、`.prettierignore` 与 `frontend/package.json`                                   | 检查和整理范围是否一致，配置查找与相对忽略路径是否因移动而变化                   |
+| 文档与协作规则                | README、`docs/`、分层 `AGENTS.md`                                                                     | 当前状态、目标状态和历史证据是否分开                                             |
 
 本脚手架的 `create_app(settings)` 在同一文件内分离 lifespan、API 路由注册、OpenAPI 配置与前端挂载，具体请求处理保留在 Router。中间件、异常处理、API 和 SPA 的装配顺序由应用工厂控制，API 先于 SPA 注册。对齐时先识别这些边界，再决定是否移动原项目的 `main.py`、`api.py` 或启动脚本；迁移后的导入、模块命令、测试和部署引用应一同调整。
 

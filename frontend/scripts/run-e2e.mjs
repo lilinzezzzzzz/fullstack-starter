@@ -162,7 +162,8 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
     },
   });
   await symlink(join(projectRoot, 'backend/.venv'), join(serviceBackend, '.venv'), 'dir');
-  const serviceEntry = join(serviceBackend, 'entrypoints/service.sh');
+  await cp(join(projectRoot, 'entrypoints'), join(serviceRoot, 'entrypoints'), { recursive: true });
+  const serviceEntry = join(serviceRoot, 'entrypoints/service.sh');
   const serviceCommand = `sh '${serviceEntry.replaceAll("'", "'\\''")}' run --config '${configFile.replaceAll("'", "'\\''")}'`;
   await writeFile(
     generatedConfig,

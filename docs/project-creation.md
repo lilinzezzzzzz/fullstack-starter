@@ -44,7 +44,7 @@ sh scripts/create-project.sh \
 
 创建器校验路径、源文件完整性，以及创建过程依赖的关键字段。由于它不引入应用依赖，完整 Pydantic 字段、枚举和跨字段校验由生成项目的 `export-settings`、测试或首次启动完成；创建器不会把明显无效的模板配置包装成成功项目。
 
-`backend/entrypoints/__init__.py`、`service.py`、`service_control.py`、`service.sh` 与 CLI 等关键文件属于显式必需清单；即使模板自身缺失文件，也会拒绝生成并清理本次目标。其余源码通过实际源文件树检查复制完整性；完整性检查不代替导入、业务或运行测试。
+根 `entrypoints/service.sh`、`backend/entrypoints/__init__.py` 及后端 `service.py`、`service_control.py`、`cli.py` 等关键文件属于显式必需清单；即使模板自身缺失文件，也会拒绝生成并清理本次目标。复制时显式排除旧 `backend/entrypoints/service.sh`，即使模板残留也不继承；复制后校验根 `entrypoints/` 只含允许的普通 Shell 文件 `service.sh`，遇到 `__init__.py`、其他 Python 文件、未允许的脚本或子目录时拒绝生成并清理本次目标。副本保留后端 Python 目录，根 `entrypoints/` 不是 Python 包。其余源码通过实际源文件树检查复制完整性；完整性检查不代替导入、业务或运行测试。
 
 根目录的 `.prettierrc.toml` 与 `.prettierignore` 同属必需文件，原样复制到新项目根目录，并纳入源码路径保护，不能作为构建输出或私有运行目录。新项目的前端命令、README、`docs/` 与各级 AGENTS 共用这份配置，忽略路径相对于新项目根目录；检查与整理仍使用 README 中的统一命令。
 
@@ -60,7 +60,7 @@ cd /absolute/path/to/my-app
 
 依赖安装后，可按 [README 的验证命令](../README.md#接口类型与验证)检查代码和接口类型；后端测试使用临时 TOML、数据库和日志，不依赖新项目的日常库。配置与创建器回归会核对元信息、端口和来源；浏览器验证结果须由新项目自己运行后记录。
 
-本例后端端口为 `18002`，打开 `http://127.0.0.1:18002/`；Hello API 的 `/api/v1/hello` 应返回 `{"message": "Hello World"}`，健康检查 `/api/health` 应显示数据库正常。实际访问地址与运行路径以新项目 TOML 为准，前台 `run` 查看完成后按 Ctrl+C 停止；后台 `start` 则使用同一配置执行 `sh backend/entrypoints/service.sh stop`。
+本例后端端口为 `18002`，打开 `http://127.0.0.1:18002/`；Hello API 的 `/api/v1/hello` 应返回 `{"message": "Hello World"}`，健康检查 `/api/health` 应显示数据库正常。实际访问地址与运行路径以新项目 TOML 为准，前台 `run` 查看完成后按 Ctrl+C 停止；后台 `start` 则使用同一配置执行 `sh entrypoints/service.sh stop`。
 
 需要热更新时，按 [README 的 Vite 步骤](../README.md#可选-vite-开发)将 `serve_frontend` 设为 `false`；本例 Vite 端口为 `5174`，其余步骤相同。
 

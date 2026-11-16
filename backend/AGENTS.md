@@ -1,13 +1,13 @@
-# 后端规则
+# 后端与服务入口规则
 
-适用于 `backend/`；同时遵循[根目录规则](../AGENTS.md)。修改迁移代码前再读取 [migrations/AGENTS.md](migrations/AGENTS.md)。
+适用于 `backend/` 及项目根的 `entrypoints/service.sh`；同时遵循[根目录规则](../AGENTS.md)。修改迁移代码前再读取 [migrations/AGENTS.md](migrations/AGENTS.md)。
 
 ## 职责与依赖
 
 - `app/routers/` 负责 HTTP 参数、依赖声明、调用与响应映射，不执行数据库写入；`app/services/` 负责业务规则、查询与写事务；`app/models/` 定义持久化结构；`app/schemas/` 定义 Pydantic I/O Schema。
 - Service 使用类，通过构造参数注入依赖。业务类不处理 FastAPI Request/Depends、不构造 I/O Schema 或基础设施；各自的模块级 `new_*_service` 工厂与类同文件，可用 Request/Depends 组装依赖。Router 声明 Depends，CLI 显式组装。不要把模块允许使用 FastAPI 误解为业务类允许依赖框架。
 - 只有无状态且不持有请求、Session 或可变配置的服务才可跨请求缓存。复杂查询出现实际复用后再提取 DAO，不预设通用 CRUD、Service 或 Repository 基类。
-- `app/maintenance/` 放 CLI 专属维护基础设施；`entrypoints/cli.py` 处理维护参数和事件循环边界；`entrypoints/` 集中放置后端可执行入口，`service.sh` 通过 uv 定位预装解释器后直接 exec Python，不保留 uv 父进程转发信号；同目录的 `service.py` 解析五个显式子命令并装配单 worker Uvicorn，`service_control.py` 管理实例登记、文件锁与仅监听回环地址的认证控制通道。`run` 与后台进程共用运行路径和固定的项目根 `.run/`，不按配置或数据库划分实例，不增加业务 API 或外部进程管理器。业务模块不反向依赖可执行入口或工程工具。
+- `app/maintenance/` 放 CLI 专属维护基础设施；`entrypoints/cli.py` 处理维护参数和事件循环边界；`backend/entrypoints/` 保留后端 Python 入口和控制实现；项目根 `entrypoints/service.sh` 是唯一服务 Shell 入口，通过 uv 定位预装解释器、切入 `backend/` 后直接 exec Python，不保留 uv 父进程转发信号，不设置 PYTHONPATH 或复制 Python 实现；后端的 `service.py` 解析五个显式子命令并装配单 worker Uvicorn，`service_control.py` 管理实例登记、文件锁与仅监听回环地址的认证控制通道。`run` 与后台进程共用运行路径和固定的项目根 `.run/`，不按配置或数据库划分实例，不增加业务 API 或外部进程管理器。根 `entrypoints/` 不创建 `__init__.py`，旧 `backend/entrypoints/service.sh` 不保留。业务模块不反向依赖可执行入口或工程工具。
 - `app/utils/` 的路径策略和数据库锁保持标准库依赖与轻量包入口，由调用方传参，不反向依赖 Settings、Service 或工具；项目创建器需要在无应用依赖时加载路径策略。
 - `app/infra/` 提供数据库、日志、静态托管和通用 HTTP 适配，可依赖 Settings、I/O Schema 与框架，但不反向依赖 Router、业务 Service 或应用工厂。`middleware.py` 提供 ASGI 请求处理，`errors.py` 提供标准错误响应和异常处理器，应用工厂保持原注册顺序并使用 `errors.register_error_handlers(application)`。`frontend.py` 提供产物检查与文件服务，挂载及 API 优先顺序由应用工厂管理。包入口保持轻量，不自动导入实现、注册组件或创建资源；应用生命周期和可执行入口负责装配、关闭。
 
@@ -27,7 +27,7 @@
 - 原生 telemetry 只维护上下文：`ALWAYS_OFF`，metrics、OTel logs、operation spans、内部指标与自动导出关闭，不注册采集/导出 processor 或 exporter。使用官方 propagator 解析与注入 `traceparent`，不自行生成 UUID trace ID 或叠加解析规则。
 - lifespan 在正常退出和启动失败时关闭 provider；OpenAPI CLI 没有 lifespan，必须显式关闭 provider。
 - Loguru 保持 `enqueue=True`、`backtrace=False`、`diagnose=False`，标准日志与 Uvicorn 统一桥接。固定策略集中在 `LoggingSettings` 的 `ClassVar`，不作为 TOML 字段或配置导出项；派生属性只为调用方转换值，边界见[配置约定](../docs/configuration.md#已收拢的运行参数)。`infra/logging.py` 使用 `std_logging` 引用标准库模块，与 Loguru 的 `logger` 实例区分。
-- 前台 Ctrl+C 与管理命令的 SIGINT 关闭均由 Uvicorn 处理；lifespan 清理资源并等待日志，服务入口再排空最后的关闭日志，随后移除实例记录并释放实例锁。Uvicorn 返回后的末尾清理临时忽略重复 SIGINT，结束后恢复处理器，不改变运行期间的原生信号行为。`.run/control.lock` 防止启停并发，`.run/run.lock` 覆盖完整运行及日志清理；数据库操作锁仍由 lifespan 与迁移共享并保留在数据库旁。`.run/instance.json` 原子保存 PID、UTC 启动时间、完整 Python 启动命令、配置路径及控制身份，后台控制台写入 `.run/console.log`，应用日志仍取 `[logging]`。实例凭据文件权限为 0600，不进入 Git、日志或命令行；凭据、PID、配置身份不匹配时不发信号。停止超时保留实例，不自动强杀，restart 不继续启动；其他信号及强制终止的限制见[进程约定](../docs/design.md#配置访问与进程边界)。错误体、请求日志和响应 trace 上下文保持关联，内部异常细节仅进入日志。
+- 前台 Ctrl+C 与管理命令的 SIGINT 关闭均由 Uvicorn 处理；lifespan 清理资源并等待日志，服务入口再排空最后的关闭日志，随后移除实例记录并释放实例锁。Uvicorn 返回后的末尾清理临时忽略重复 SIGINT/SIGTERM，结束后恢复处理器，不改变运行期间的原生信号行为。`.run/control.lock` 防止启停并发，`.run/run.lock` 覆盖完整运行及日志清理；数据库操作锁仍由 lifespan 与迁移共享并保留在数据库旁。`.run/instance.json` 原子保存 PID、UTC 启动时间、规范化公开 Python 启动命令（不含内部传输描述符）、配置路径及控制身份，后台控制台写入 `.run/console.log`，应用日志仍取 `[logging]`。实例凭据文件权限为 0600，不进入 Git、日志或命令行；凭据、PID、实例快照指纹不匹配时不发信号。停止超时保留实例，不自动强杀，restart 不继续启动；其他信号及强制终止的限制见[进程约定](../docs/design.md#配置访问与进程边界)。错误体、请求日志和响应 trace 上下文保持关联，内部异常细节仅进入日志。
 
 ## 验证
 
@@ -43,3 +43,14 @@ uv run --directory backend pytest
 - API/错误/静态回退、配置/日志、telemetry/traceparent、异步数据库、迁移、服务与项目创建各有对应 `test_*.py`，按实际影响选择，不用历史测试总数判断通过。
 - `integration` 测试启动自有本机进程，需要监听与信号权限；受限时可执行 `uv run --directory backend pytest -m 'not integration'`，但必须报告未执行真实启停，不能声称完整回归通过。
 - 改动导入、应用工厂或 telemetry 时，覆盖无数据库/无前端产物的导入及 OpenAPI 导出、冲突环境隔离和资源关闭；API 或公开配置 Schema 变化还需生成并检查前端类型。
+
+## 服务管理共同契约
+
+- 五个子命令显式提供；`start/run` 在操作锁内先认证已有实例，有实例时提示并返回 0，不读取本次配置，无实例才加载并分别后台/前台启动。运行锁已占用但身份尚未登记时，`start/run` 只提示登记中并返回 0，不再启动；`status` 为 starting/1，`stop` 因无法认证目标返回 1，不发信号。这些结果不表示健康检查已经通过。
+- `status/stop` 只用 `.run/instance.json` 的实际地址、身份和停止期限，忽略 `--config`，不读取 TOML。`restart` 在操作锁内读取、校验并冻结目标文档，停止旧实例后按同一快照启动；允许切换路径，省略参数固定使用 `configs/app.toml`。
+- 后台子进程只接收匿名描述符中的原始 TOML 快照，配置字段由各自 Settings 校验，不将任何项目的专用字段写入通用控制层；原始 TOML 快照不写入具名文件；控制通道随机令牌仅写入 0600 的 `.run/instance.json` 及原子更新期间同权限的 `instance.json.pending`，不进入配置快照、日志、命令行或 Git。
+- 使用认证回环控制通道，由目标进程自行发送 SIGINT；运行锁必须覆盖应用资源关闭、末尾日志排空、控制线程和实例记录清理。退出末尾忽略重复 SIGINT/SIGTERM，之后恢复原处理器。
+- 所有 Ctrl+C 中断返回 130，包括运行中的前台 run；成功返回 0，status 已停止为 3，参数错误为 2，其余执行错误为 1。停止失败不继续重启，超时不强杀。
+- 运行文件检查不依赖配置，拒绝 `.run` 和文件符号链接，凭据与运行文件权限为 0600；未知活跃协议拒绝控制，升级协议前使用原版本停服，不自动接管旧实例。
+
+- SIGTERM 先优雅停服，再完成日志和实例清理并返回 143；服务控制命令和后端测试辅助器超时不强杀。E2E 运行器可最终强制回收自己创建的隔离临时进程，但超时必须失败并保留诊断，不得清理日常服务。

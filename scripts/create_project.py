@@ -240,7 +240,7 @@ ROOT_PROJECT_FILES = (
     "backend/entrypoints/cli.py",
     "backend/entrypoints/service.py",
     "backend/entrypoints/service_control.py",
-    "backend/entrypoints/service.sh",
+    "entrypoints/service.sh",
     "backend/uv.lock",
     "backend/alembic.ini",
     "backend/.python-version",
@@ -254,6 +254,7 @@ ROOT_PROJECT_FILES = (
     "frontend/.npmrc",
 )
 SOURCE_TREE_ROOTS = (
+    "entrypoints",
     "backend/app",
     "backend/migrations",
     "backend/entrypoints",
@@ -268,7 +269,12 @@ SOURCE_TREE_ROOTS = (
 )
 
 
+LEGACY_SERVICE_ENTRY = Path("backend/entrypoints/service.sh")
+
+
 def _is_ignored_source(relative: Path) -> bool:
+    if relative == LEGACY_SERVICE_ENTRY or LEGACY_SERVICE_ENTRY in relative.parents:
+        return True
     if any(
         part.startswith(".") or part in {"__pycache__", ".pytest_cache", ".ruff_cache"}
         for part in relative.parts
@@ -280,6 +286,22 @@ def _is_ignored_source(relative: Path) -> bool:
 
 
 def check_project_files(target: Path) -> None:
+    entrypoints = target / "entrypoints"
+    if entrypoints.is_symlink():
+        raise ValueError("Root entrypoints must be a real directory")
+    if entrypoints.is_dir():
+        unexpected = sorted(
+            path.name
+            for path in entrypoints.iterdir()
+            if path.name != "service.sh" or not path.is_file() or path.is_symlink()
+        )
+        if unexpected:
+            raise ValueError(
+                "Root entrypoints contains unsupported files: " + ", ".join(unexpected)
+            )
+    legacy = target / LEGACY_SERVICE_ENTRY
+    if legacy.exists() or legacy.is_symlink():
+        raise ValueError("Generated project contains obsolete backend/entrypoints/service.sh")
     missing_roots = [
         root_name for root_name in SOURCE_TREE_ROOTS if not (PROJECT_ROOT / root_name).is_dir()
     ]
@@ -308,7 +330,11 @@ def copy_source(target: Path, excluded: list[Path]) -> None:
         "rsync",
         "-a",
         "--exclude=.git",
+        "--exclude=.venv",
+        "--exclude=node_modules",
+        "--exclude=.pnpm-store",
         "--exclude=/.run/",
+        f"--exclude=/{LEGACY_SERVICE_ENTRY.as_posix()}",
         "--exclude=.env*",
         "--exclude=.secrets*",
         f"--exclude-from={PROJECT_ROOT / '.gitignore'}",
@@ -491,7 +517,7 @@ def main() -> None:
     print("  pnpm --dir frontend build")
     print("  uv run --directory backend python -m entrypoints.cli db-check")
     print("  uv run --directory backend python -m entrypoints.cli db-upgrade")
-    print("  sh backend/entrypoints/service.sh run")
+    print("  sh entrypoints/service.sh run")
 
 
 if __name__ == "__main__":

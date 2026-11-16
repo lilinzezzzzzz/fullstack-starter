@@ -5,18 +5,17 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 import pytest
 
-from app.config import PROJECT_ROOT, Settings, load_settings
+from app.config import PROJECT_ROOT, load_settings
 from app.utils.database_lock import ServiceError, operation_lock
 from entrypoints import service_control
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, response_trace_id, save_config, write_config
+from tests.service_helpers import foreground_service, unused_port, wait_for_service
 
 pytestmark = pytest.mark.usefixtures("service_project")
 
@@ -31,62 +30,6 @@ def test_database_lock_is_exclusive_and_released_after_failure(tmp_path: Path) -
             raise ValueError("probe")
     with operation_lock(database):
         assert not database.exists()
-
-
-def unused_port() -> int:
-    with socket.socket() as connection:
-        connection.bind(("127.0.0.1", 0))
-        return connection.getsockname()[1]
-
-
-@contextmanager
-def foreground_service(
-    config: Path,
-    *,
-    command: list[str] | None = None,
-) -> Generator[tuple[subprocess.Popen[bytes], Path]]:
-    output_file = config.with_suffix(".foreground.log")
-    with output_file.open("w") as output:
-        process = subprocess.Popen(
-            command
-            if command is not None
-            else [
-                "sh",
-                str(service_control.PROJECT_ROOT / "backend/entrypoints/service.sh"),
-                "run",
-                "--config",
-                str(config),
-            ],
-            cwd=config.parent,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        try:
-            yield process, output_file
-        finally:
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGINT)
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=3)
-
-
-def wait_for_service(process: subprocess.Popen[bytes], settings: Settings, output: Path) -> str:
-    base_url = f"http://127.0.0.1:{settings.server.port}"
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            pytest.fail(output.read_text())
-        try:
-            with urlopen(f"{base_url}/api/health", timeout=1) as response:
-                if response.status == 200:
-                    return base_url
-        except OSError:
-            time.sleep(0.05)
-    pytest.fail(f"Service did not become ready: {output.read_text()}")
 
 
 @pytest.mark.integration
@@ -141,11 +84,11 @@ def test_foreground_service_ctrl_c_and_maintenance_lock(
         data["logging"]["console"] = True
         save_config(second, data)
         with foreground_service(second) as (duplicate, duplicate_output):
-            assert duplicate.wait(timeout=10) != 0
-            assert "in progress" in duplicate_output.read_text()
+            assert duplicate.wait(timeout=10) == 0
+            assert "already running" in duplicate_output.read_text()
         assert process.poll() is None
         os.killpg(process.pid, signal.SIGINT)
-        assert process.wait(timeout=10) == 0
+        assert process.wait(timeout=10) == 130
     terminal = output.read_text()
     assert "resource_tracker" not in terminal
     assert "leaked semaphore" not in terminal
@@ -211,7 +154,7 @@ def test_repeated_sigint_cannot_interrupt_final_control_cleanup(tmp_path: Path) 
         "    time.sleep(0.5)\n"
         "    original_close(self)\n"
         "service.InstanceControl.close = delayed_close\n"
-        "service.main()\n"
+        "raise SystemExit(service.main())\n"
     )
     command = [sys.executable, "-c", probe.read_text(), "run", "--config", str(config)]
     # -c 从 backend 加载包；测试资源及日志仍全部位于 tmp_path。
@@ -225,7 +168,7 @@ def test_repeated_sigint_cannot_interrupt_final_control_cleanup(tmp_path: Path) 
             time.sleep(0.01)
         assert marker.exists(), output.read_text()
         os.killpg(process.pid, signal.SIGINT)
-        assert process.wait(timeout=5) == 0
+        assert process.wait(timeout=5) == 130
     assert "Traceback" not in output.read_text()
     assert not service_control.runtime_path("instance.json").exists()
     upgrade_database(settings)

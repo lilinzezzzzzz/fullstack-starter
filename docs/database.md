@@ -18,20 +18,20 @@ uv run --directory backend python -c 'import sqlite3; print(sqlite3.sqlite_versi
 
 随附配置的数据库位于项目根目录的 `.data/app.sqlite3`，备份目录为 `.data/backups/`；连接开启 WAL、外键、保守持久化设置和有限锁等待。初始迁移只有 `alembic_version`，没有业务表。`.data/` 是运行数据目录，保持 Git 忽略。服务实例记录和进程运行锁位于固定 `.run/`；数据库维护仍使用数据库旁的 `.data/app.sqlite3.lock`，两类锁职责不同，操作入口见 [README 的服务控制](../README.md#服务控制)。
 
-需要升级前快照时，在修改迁移历史或切换到含新迁移的代码之前，用与当前库版本匹配的代码停服并执行备份；新建空库跳过备份。迁移审查与验证完成后，再显式升级并启动。`db-upgrade` 与应用 lifespan 持有同一个数据库锁，服务运行时会拒绝迁移。执行维护前，使用同一配置执行 `sh backend/entrypoints/service.sh stop`，或在前台服务终端按 Ctrl+C，确认服务清理完成及其他数据库使用者也已停止；文件锁仅约束使用同一锁机制的本机进程。
+需要升级前快照时，在修改迁移历史或切换到含新迁移的代码之前，用与当前库版本匹配的代码停服并执行备份；新建空库跳过备份。迁移审查与验证完成后，再显式升级并启动。`db-upgrade` 与应用 lifespan 持有同一个数据库锁，服务运行时会拒绝迁移。执行维护前，直接执行 `sh entrypoints/service.sh stop` 停止当前实例，或在前台服务终端按 Ctrl+C，确认服务清理完成及其他数据库使用者也已停止；文件锁仅约束使用同一锁机制的本机进程。
 
 ```bash
 # 已有库按需备份：在新增 revision 或切换代码之前执行；新建空库跳过
-sh backend/entrypoints/service.sh stop
+sh entrypoints/service.sh stop
 uv run --directory backend python -m entrypoints.cli db-backup
 
 # 完成迁移生成、审查与验证后，确认所有数据库使用者均已停止
-sh backend/entrypoints/service.sh stop
+sh entrypoints/service.sh stop
 uv run --directory backend python -m entrypoints.cli db-upgrade
-sh backend/entrypoints/service.sh start
+sh entrypoints/service.sh start
 ```
 
-维护命令与服务必须使用同一个配置文件。备份通过 SQLite Backup API 创建一致性快照，校验完整性与版本后打印路径，保存到 `backup_directory` 指定的位置，不覆盖旧文件。`db-backup` 要求库版本与所用代码一致；生成新 revision 后，不能用新代码备份仍停留在旧 revision 的库，应使用此前与库版本匹配的代码创建快照。
+维护 CLI 需显式选择指向目标数据库的完整配置，并核对数据路径和版本；`stop` 不加载配置，也不通过配置路径选择实例。备份通过 SQLite Backup API 创建一致性快照，校验完整性与版本后打印路径，保存到 `backup_directory` 指定的位置，不覆盖旧文件。`db-backup` 要求库版本与所用代码一致；生成新 revision 后，不能用新代码备份仍停留在旧 revision 的库，应使用此前与库版本匹配的代码创建快照。
 
 `db-backup` 不自动停服，也不持有服务/升级操作锁；停服是操作者需要完成的前提，不能从命令成功推断服务已停止。
 

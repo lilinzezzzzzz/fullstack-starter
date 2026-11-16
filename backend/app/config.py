@@ -3,7 +3,15 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    model_validator,
+)
 
 from app.utils.path_safety import path_is_relative_to, validate_runtime_paths
 
@@ -206,6 +214,8 @@ class TestingSettings(ConfigSection):
 
 
 class Settings(ConfigSection):
+    _source_file: Path | None = PrivateAttr(default=None)
+
     data_dir: ProjectPath  # 私有 SQLite 数据目录；导入和配置加载不会创建数据库。
     database_filename: Filename  # 数据库文件名，相对于 data_dir。
     backup_directory: ProjectPath  # 显式备份操作的输出目录，独立于数据目录配置。
@@ -252,14 +262,34 @@ class Settings(ConfigSection):
     def database_path(self) -> Path:
         return self.data_dir / self.database_filename
 
+    @property
+    def source_file(self) -> Path:
+        if self._source_file is None:
+            raise ValueError(
+                "Service startup requires settings loaded from an explicit TOML document"
+            )
+        return self._source_file
 
-def load_settings(config_file: str | Path) -> Settings:
-    """读取单个完整的 TOML 文件，不读取环境变量、不合并配置、不回退取值。"""
+
+def settings_from_document(document: bytes, source_file: Path) -> Settings:
+    """校验不可变 TOML 文档；原配置路径仅作来源，不重新打开文件。"""
+    if not source_file.is_absolute() or source_file.suffix != ".toml":
+        raise ValueError("Application configuration must be an absolute .toml path")
+    settings = Settings.model_validate(tomllib.loads(document.decode("utf-8")))
+    if path_is_relative_to(source_file, settings.frontend_dir):
+        raise ValueError("Configuration file must not be inside the public frontend directory")
+    settings._source_file = source_file
+    return settings
+
+
+def load_settings_snapshot(config_file: str | Path) -> tuple[Settings, bytes]:
     path = resolve_project_path(config_file)
     if path.suffix != ".toml":
         raise ValueError("Application configuration must be a .toml file")
-    with path.open("rb") as handle:
-        settings = Settings.model_validate(tomllib.load(handle))
-    if path_is_relative_to(path, settings.frontend_dir):
-        raise ValueError("Configuration file must not be inside the public frontend directory")
-    return settings
+    document = path.read_bytes()
+    return settings_from_document(document, path), document
+
+
+def load_settings(config_file: str | Path) -> Settings:
+    """读取完整显式 TOML，不读取环境变量、不合并配置或回退取值。"""
+    return load_settings_snapshot(config_file)[0]

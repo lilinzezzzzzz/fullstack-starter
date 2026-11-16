@@ -5,9 +5,11 @@
 不同路径，源代码目录或运行时目录就可能绕过下方的保护检查。
 """
 
+from collections.abc import Mapping
 from pathlib import Path
 
 SOURCE_DIRECTORIES = (
+    "entrypoints",
     "backend",
     "frontend",
     "scripts",
@@ -29,6 +31,7 @@ SOURCE_FILES = (
     ".prettierignore",
 )
 RESERVED_RUNTIME_DIRECTORIES = (
+    "private",
     "data",
     ".data",
     "logs",
@@ -84,7 +87,9 @@ def validate_runtime_paths(
     temporary_directory: str | Path,
     database_filename: str,
     logging_filename: str,
+    extra_private_paths: Mapping[str, str | Path] | None = None,
 ) -> None:
+    """校验公共输出与私有路径；业务扩展不得覆盖内置私有路径的名称。"""
     project_root = project_root.resolve()
     service_directory = project_root / ".run"
     if service_directory.is_symlink():
@@ -104,6 +109,10 @@ def validate_runtime_paths(
         "backup_directory": (project_root / backup_directory).resolve(),
         "logging.directory": (project_root / logging_directory).resolve(),
     }
+    for field, value in (extra_private_paths or {}).items():
+        if field in private_paths:
+            raise ValueError(f"Extra private path must not override {field}")
+        private_paths[field] = (project_root / value).resolve()
     source_paths = [project_root / name for name in (*SOURCE_DIRECTORIES, *SOURCE_FILES)]
     protected_paths = [
         *source_paths,

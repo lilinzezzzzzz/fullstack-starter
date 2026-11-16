@@ -33,5 +33,5 @@ pnpm --dir frontend test:e2e
 ```
 
 - 构建与 E2E 的完整命令和配置选择见 [README](../README.md#接口类型与验证)。页面流程只用 `test:e2e` 入口，不直接执行 Playwright test 绕过隔离运行器。
-- E2E 在独立临时项目副本中运行后端，隔离固定 `.run/`；同时使用独占临时 TOML、数据库、日志、构建目录和服务端口，经 `sh backend/entrypoints/service.sh run` 启动自有前台服务，由 Playwright 等待健康检查并以 SIGINT 沿用 Uvicorn 原生 Ctrl+C 路径正常关闭；核对末尾日志和自有进程退出，不复用日常服务。
+- E2E 在独立临时项目副本中运行后端，隔离固定 `.run/`；同时使用独占临时 TOML、数据库、日志、构建目录和服务端口，经 `sh entrypoints/service.sh run` 启动自有前台服务，由 Playwright 等待健康检查并以 SIGINT 沿用 Uvicorn 原生 Ctrl+C 路径正常关闭；核对末尾日志和自有进程退出，不复用日常服务。
 - Chromium 为当前自动化基线，安装匹配的浏览器后再运行；尊重 screenshot/trace/keep_artifacts 配置。成功且 keep_artifacts=false 时清理，成功且为 true 时保留产物，失败时始终保留诊断并报告路径。未运行浏览器测试时，不把类型、lint 或构建通过表述为页面行为通过。

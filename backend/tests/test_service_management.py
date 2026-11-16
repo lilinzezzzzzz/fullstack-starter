@@ -8,6 +8,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from urllib.request import urlopen
 
 import pytest
 import uvicorn
@@ -16,27 +17,39 @@ from pydantic import ValidationError
 from app.config import CONFIG_FILE, Settings, load_settings
 from app.utils.database_lock import ServiceError
 from entrypoints import service, service_control
-from entrypoints.service_control import InstanceControl, instance_active, runtime_path, service_lock
+from entrypoints.service_control import (
+    InstanceControl,
+    instance_active,
+    is_healthy,
+    runtime_path,
+    service_lock,
+    service_url,
+)
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, save_config, write_config
-from tests.test_service import foreground_service, unused_port, wait_for_service
+from tests.service_helpers import (
+    foreground_service,
+    run_service_command,
+    unused_port,
+    wait_for_service,
+)
 
 pytestmark = pytest.mark.usefixtures("service_project")
 
 
 def service_command(config: Path, command: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    settings = load_settings(config)
+    return run_service_command(
         [
             "sh",
-            str(service_control.PROJECT_ROOT / "backend/entrypoints/service.sh"),
+            str(service_control.PROJECT_ROOT / "entrypoints/service.sh"),
             command,
             "--config",
             str(config),
         ],
         cwd=config.parent,
-        capture_output=True,
-        text=True,
-        timeout=15,
+        command_timeout=settings.testing.command_timeout_seconds,
+        shutdown_timeout=settings.service.stop_timeout_seconds,
     )
 
 
@@ -70,9 +83,10 @@ def test_command_is_required_and_old_implicit_run_is_rejected(
         assert error.value.code == 2
 
 
+@pytest.mark.integration
 def test_default_configuration_is_app_toml(service_project: Path, tmp_path: Path) -> None:
     result = subprocess.run(
-        ["sh", str(service_project / "backend/entrypoints/service.sh"), "status"],
+        ["sh", str(service_project / "entrypoints/service.sh"), "status"],
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -141,13 +155,15 @@ def test_background_lifecycle_is_idempotent_and_preserves_shutdown_logs(tmp_path
             "console.log",
         }
         assert datetime.fromisoformat(initial["started_at"]).utcoffset().total_seconds() == 0
-        assert initial["command"][1:] == [
+        assert initial["command"][1:6] == [
             "-m",
             "entrypoints.service",
             "run",
             "--config",
             str(config.resolve()),
         ]
+        assert len(initial["command"]) == 6
+        assert initial["token"] not in " ".join(initial["command"])
         assert initial["config"] == str(config.resolve())
         assert initial["project"] == str(service_control.PROJECT_ROOT)
         assert state_path.stat().st_mode & 0o777 == 0o600
@@ -156,8 +172,8 @@ def test_background_lifecycle_is_idempotent_and_preserves_shutdown_logs(tmp_path
         assert duplicate.returncode == 0 and "already running" in duplicate.stdout
         assert json.loads(state_path.read_text())["pid"] == initial["pid"]
         with foreground_service(config) as (duplicate_run, output):
-            assert duplicate_run.wait(timeout=10) != 0
-            assert "in progress" in output.read_text()
+            assert duplicate_run.wait(timeout=10) == 0
+            assert "already running" in output.read_text()
         with pytest.raises(ServiceError, match="in progress"):
             upgrade_database(settings)
         restarted = service_command(config, "restart")
@@ -186,30 +202,31 @@ def test_foreground_instance_can_be_queried_and_stopped(tmp_path: Path) -> None:
         wait_for_service(process, settings, output)
         assert service_command(config, "status").returncode == 0
         assert service_command(config, "stop").returncode == 0
-        assert process.wait(timeout=5) in (0, 130)
+        assert process.wait(timeout=5) == 130
     assert not instance_active()
 
 
 @pytest.mark.integration
-def test_restart_applies_changed_config_but_other_config_cannot_stop_it(tmp_path: Path) -> None:
+def test_restart_applies_changed_config_and_state_commands_ignore_config(tmp_path: Path) -> None:
     config = isolated_config(tmp_path)
     settings = load_settings(config)
     upgrade_database(settings)
     with background_service(config):
         other_config = tmp_path / "other.toml"
         other_config.write_bytes(config.read_bytes())
-        for command in ("start", "status", "stop", "restart"):
-            rejected = service_command(other_config, command)
-            assert rejected.returncode == 1
-            assert "different project or configuration" in rejected.stderr
+        for command in ("start", "run", "status"):
+            result = service_command(other_config, command)
+            assert result.returncode == 0, result.stderr
         data = read_config(config)
         data["application"]["title"] = "changed service"
         save_config(config, data)
-        assert service_command(config, "start").returncode == 1
+        assert service_command(config, "start").returncode == 0
         state = service_command(config, "status")
-        assert state.returncode == 1 and "config-changed" in state.stdout
+        assert state.returncode == 0 and "healthy" in state.stdout
         assert service_command(config, "restart").returncode == 0
         assert service_command(config, "status").returncode == 0
+        with urlopen(service_url(settings) + "/openapi.json", timeout=3) as response:
+            assert json.load(response)["info"]["title"] == "changed service"
 
 
 @pytest.mark.integration
@@ -223,8 +240,8 @@ def test_different_database_and_port_cannot_start_a_second_project_instance(tmp_
     with background_service(first):
         before = runtime_path("instance.json").read_bytes()
         for command in ("start", "run"):
-            rejected = service_command(second, command)
-            assert rejected.returncode == 1
+            existing = service_command(second, command)
+            assert existing.returncode == 0 and "already running" in existing.stdout
         assert runtime_path("instance.json").read_bytes() == before
         assert service_command(first, "status").returncode == 0
         assert not list(second_settings.data_dir.glob("*.service.*"))
@@ -272,7 +289,7 @@ def test_failed_background_start_cleans_up_owned_process(tmp_path: Path, failure
         data["serve_frontend"] = True
     elif failure == "unhealthy":
         data["allowed_hosts"] = []
-        data["service"]["startup_timeout_seconds"] = 1.0
+        # 使用完整启动预算，让此用例覆盖就绪检查超时，而非解释器导入阶段取消。
     save_config(config, data)
     settings = load_settings(config)
     if failure != "missing-database":
@@ -315,7 +332,7 @@ def test_invalid_instance_credentials_never_signal_a_running_service(tmp_path: P
                 assert rejected.returncode == 1
                 assert "no signal sent" in rejected.stderr
                 # HTTP 仍然可用；实例没有因凭据或 PID 不匹配而停止。
-                assert service.healthy(settings, 1.0)
+                assert is_healthy(service_url(settings), 1.0)
         finally:
             path.write_bytes(original)
         assert service_command(config, "status").returncode == 0
@@ -350,7 +367,7 @@ def test_restart_does_not_start_after_stop_timeout(
     signals = []
     monkeypatch.setattr(os, "kill", lambda pid, sig: signals.append((pid, sig)))
     server = uvicorn.Server(uvicorn.Config("unused"))
-    control = InstanceControl(settings, config.resolve(), server)
+    control = InstanceControl(settings, server, "synthetic-fingerprint")
     with service_lock(runtime_path("run.lock")):
         try:
             control.start()
@@ -365,14 +382,13 @@ def test_restart_does_not_start_after_stop_timeout(
 
 
 @pytest.mark.integration
-def test_command_lock_rejects_concurrent_mutations(tmp_path: Path) -> None:
+def test_command_lock_contention_is_bounded(tmp_path: Path) -> None:
     config = isolated_config(tmp_path)
     with service_lock(runtime_path("control.lock")):
-        for command in ("start", "stop", "restart"):
-            result = service_command(config, command)
-            assert result.returncode == 1
-            assert "in progress" in result.stderr
-        assert service_command(config, "status").returncode == 3
+        with pytest.raises(ServiceError, match="in progress"):
+            with service_lock(runtime_path("control.lock"), 0.01):
+                pass
+    assert service_command(config, "status").returncode == 3
     assert not runtime_path("console.log").exists()
     assert not runtime_path("instance.json").exists()
 
