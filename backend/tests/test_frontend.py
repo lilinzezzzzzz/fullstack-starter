@@ -18,7 +18,7 @@ def web_client(settings: Settings) -> Iterator[TestClient]:
     assets = settings.frontend_dir / "assets"
     assets.mkdir()
     (assets / "app.js").write_text("console.log('hello')")
-    with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
         yield client
 
 
@@ -70,14 +70,14 @@ def test_encoded_hidden_paths_are_not_exposed(web_client: TestClient) -> None:
 def test_missing_frontend_has_actionable_startup_error(settings: Settings) -> None:
     settings.serve_frontend = True
     with pytest.raises(RuntimeError, match="pnpm --dir frontend build"):
-        with TestClient(create_app(settings), base_url="http://127.0.0.1"):
+        with TestClient(create_app(), base_url="http://127.0.0.1"):
             pass
 
 
 def test_api_only_mode_needs_no_build(tmp_path: Path, settings: Settings) -> None:
     settings.frontend_dir = tmp_path / "never-built"
     settings.serve_frontend = False
-    with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
         assert client.get("/api/v1/hello").status_code == 200
         assert client.get("/").status_code == 404
     assert not settings.frontend_dir.exists()

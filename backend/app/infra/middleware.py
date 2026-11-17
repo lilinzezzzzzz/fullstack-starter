@@ -7,14 +7,13 @@ from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.config import Settings
+from app.config import settings
 from app.infra.errors import error_response
 
 
 class RequestMiddleware:
-    def __init__(self, app: ASGIApp, settings: Settings) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
-        self.settings = settings
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -52,7 +51,7 @@ class RequestMiddleware:
                     hostname = request.url.hostname
                 except ValueError:
                     hostname = None
-                if hostname not in self.settings.allowed_hosts:
+                if hostname not in settings.allowed_hosts:
                     response = error_response(request, "INVALID_HOST", "Host 不在允许列表中", 400)
                     await response(scope, receive, send_response)
                     return
@@ -62,7 +61,7 @@ class RequestMiddleware:
                 if (
                     origin is not None
                     and origin != current_origin
-                    and origin not in self.settings.allowed_origins
+                    and origin not in settings.allowed_origins
                 ) or request.headers.get("sec-fetch-site") == "cross-site":
                     response = error_response(request, "INVALID_ORIGIN", "不允许此来源访问", 403)
                     await response(scope, receive, send_response)
@@ -70,7 +69,7 @@ class RequestMiddleware:
 
                 await self.app(scope, receive, send_response)
             finally:
-                if self.settings.logging.request_logging:
+                if settings.logging.request_logging:
                     logger.info(
                         "{} {} {} {:.1f}ms",
                         scope["method"],

@@ -31,6 +31,21 @@ def load_path_policy():
 PATH_POLICY = load_path_policy()
 
 
+def read_service_port() -> int:
+    try:
+        script = (PROJECT_ROOT / "entrypoints/service.sh").read_text()
+    except FileNotFoundError as exc:
+        raise ValueError("Template is missing required files: entrypoints/service.sh") from exc
+    values = re.findall(
+        r"^server_port=([0-9]+)$",
+        script,
+        re.MULTILINE,
+    )
+    if len(values) != 1 or not 1 <= int(values[0]) <= 65535:
+        raise ValueError("Template server_port must be one integer from 1 to 65535")
+    return int(values[0])
+
+
 def read_toml(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
@@ -152,22 +167,13 @@ def validate_template_shape(settings: dict) -> None:
         and bool(application["title"]),
         "Template application.title must be a non-empty string",
     )
-    server = settings.get("server")
     vite = settings.get("vite")
+    require(isinstance(vite, dict), "Template vite must be a table")
+    port = vite.get("port")
     require(
-        isinstance(server, dict)
-        and isinstance(server.get("workers"), int)
-        and not isinstance(server["workers"], bool)
-        and server["workers"] == 1,
-        "Template server.workers must be 1",
+        type(port) is int and 1 <= port <= 65535,
+        "Template vite.port must be an integer from 1 to 65535",
     )
-    for section_name, section in (("server", server), ("vite", vite)):
-        require(isinstance(section, dict), f"Template {section_name} must be a table")
-        port = section.get("port")
-        require(
-            isinstance(port, int) and not isinstance(port, bool) and 1 <= port <= 65535,
-            f"Template {section_name}.port must be an integer from 1 to 65535",
-        )
     require(
         isinstance(vite.get("proxy_target"), str),
         "Template vite.proxy_target must be a string",
@@ -230,6 +236,8 @@ ROOT_PROJECT_FILES = (
     "configs/app.toml",
     "backend/pyproject.toml",
     "backend/app/application.py",
+    "backend/app/telemetry/adapter.py",
+    "backend/app/utils/lazy_proxy.py",
     "backend/app/infra/__init__.py",
     "backend/app/infra/database.py",
     "backend/app/infra/errors.py",
@@ -238,8 +246,7 @@ ROOT_PROJECT_FILES = (
     "backend/app/infra/middleware.py",
     "backend/entrypoints/__init__.py",
     "backend/entrypoints/cli.py",
-    "backend/entrypoints/service.py",
-    "backend/entrypoints/service_control.py",
+    "backend/entrypoints/api.py",
     "entrypoints/service.sh",
     "backend/uv.lock",
     "backend/alembic.ini",
@@ -333,6 +340,7 @@ def copy_source(target: Path, excluded: list[Path]) -> None:
         "--exclude=.venv",
         "--exclude=node_modules",
         "--exclude=.pnpm-store",
+        # 记录可能缺失或残留，始终排除整个目录，也不继承旧版本的运行锁。
         "--exclude=/.run/",
         f"--exclude=/{LEGACY_SERVICE_ENTRY.as_posix()}",
         "--exclude=.env*",
@@ -371,7 +379,10 @@ def ignore_runtime_paths(target: Path, directories: list[Path]) -> None:
 
 def update_documents(target: Path, name: str, settings: dict, vite_port: int, port: int) -> None:
     old_title = settings["application"]["title"]
-    ports = {settings["server"]["port"]: port, settings["vite"]["port"]: vite_port}
+    ports = {
+        read_service_port(): port,
+        settings["vite"]["port"]: vite_port,
+    }
     pattern = r"(?<!\d)(?:" + "|".join(map(str, ports)) + r")(?!\d)"
     for relative in ("README.md", "AGENTS.md", "docs/design.md", "docs/configuration.md"):
         path = target / relative
@@ -392,6 +403,7 @@ def update_documents(target: Path, name: str, settings: dict, vite_port: int, po
 
 
 def create_project(name: str, target: Path, port: int, vite_port: int | None) -> int:
+    template_port = read_service_port()
     settings = read_toml(PROJECT_ROOT / "configs/app.toml")
     validate_template_shape(settings)
     validate_template_paths(settings)
@@ -399,7 +411,7 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         vite_port = settings["vite"]["port"]
     if port == vite_port:
         raise ValueError("Backend and Vite ports must be different.")
-    if settings["server"]["port"] == settings["vite"]["port"]:
+    if template_port == settings["vite"]["port"]:
         raise ValueError("Template backend and Vite ports must be different.")
     if os.path.lexists(target):
         raise ValueError(f"Target already exists; nothing was overwritten: {target}")
@@ -426,12 +438,14 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
     changes.update(
         {
             ("application", "title"): name,
-            ("server", "port"): port,
             ("vite", "port"): vite_port,
             ("vite", "proxy_target"): with_port(settings["vite"]["proxy_target"], port),
         }
     )
-    origin_ports = {settings["server"]["port"]: port, settings["vite"]["port"]: vite_port}
+    origin_ports = {
+        template_port: port,
+        settings["vite"]["port"]: vite_port,
+    }
     changes[("allowed_origins",)] = [
         with_port(origin, origin_ports[urlsplit(origin).port])
         if urlsplit(origin).port in origin_ports
@@ -446,6 +460,17 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         copy_source(target, list(paths.values()))
         check_project_files(target)
         (target / "configs/app.toml").write_text(config, encoding="utf-8")
+        service_entry = target / "entrypoints/service.sh"
+        service_entry.write_text(
+            re.sub(
+                r"^server_port=[0-9]+$",
+                f"server_port={port}",
+                service_entry.read_text(),
+                count=1,
+                flags=re.MULTILINE,
+            ),
+            encoding="utf-8",
+        )
         ignore_runtime_paths(target, list(paths.values()))
         metadata = target / "backend/pyproject.toml"
         old_name = read_toml(metadata)["project"]["name"]

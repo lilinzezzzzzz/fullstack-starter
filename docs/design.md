@@ -43,9 +43,9 @@ fullstack-starter/
 ├── .node-version
 ├── .prettierrc.toml                  # 前端与项目 Markdown 共用的格式规则
 ├── .prettierignore                   # 相对根目录的 Prettier 排除规则
-├── configs/app.toml                  # 唯一应用配置入口
+├── configs/app.toml                  # 其余应用与工具配置
 ├── entrypoints/                      # 项目级 Shell 入口，不是 Python 包
-│   └── service.sh                    # 定位后端环境并直接 exec Python
+│   └── service.sh                    # 唯一服务入口，五个命令及 Uvicorn CLI 启动
 ├── scripts/                          # 工程工具
 │   ├── create-project.sh             # 创建项目的 sh 入口
 │   └── create_project.py             # 复制、重命名、配置与锁文件校验
@@ -61,14 +61,16 @@ fullstack-starter/
 │   ├── .python-version
 │   ├── alembic.ini
 │   ├── app/
-│   │   ├── application.py            # 应用工厂、路由装配和 lifespan
-│   │   ├── config.py                 # 配置读取、校验和路径解析
+│   │   ├── application.py            # 无参数应用工厂、路由装配和 lifespan
+│   │   ├── config.py                 # 固定 settings 代理、真实实例缓存、校验和路径解析
 │   │   ├── telemetry/                # 原生 telemetry 上下文装配
-│   │   │   ├── __init__.py            # 轻量工厂导出入口
+│   │   │   ├── __init__.py            # 轻量作用域与 getter 导出入口
 │   │   │   ├── environment.py         # 导入前环境隔离和 TOML 白名单桥接
-│   │   │   └── provider.py            # 本地 SDK provider 和全局传播器装配
+│   │   │   ├── provider.py            # 本地 SDK provider 生命周期与传播器装配
+│   │   │   └── adapter.py             # 不持有 SDK 资源的公共 API 适配入口
 │   │   ├── utils/                    # 应用与工程工具共用的底层辅助模块
 │   │   │   ├── database_lock.py      # 运行服务与离线迁移共用的数据库锁
+│   │   │   ├── lazy_proxy.py         # 仅转发属性读取的轻量代理
 │   │   │   └── path_safety.py        # 大小写/符号链接安全的运行路径边界
 │   │   ├── infra/                    # 数据库、日志、静态托管与 HTTP 适配
 │   │   │   ├── __init__.py           # 轻量包入口，无资源初始化
@@ -82,11 +84,10 @@ fullstack-starter/
 │   │   ├── maintenance/              # backup.py、CLI 维护基础设施
 │   │   ├── models/                   # SQLAlchemy Base，无业务表
 │   │   └── schemas/                  # Hello、健康检查与错误 Schema
-│   ├── entrypoints/                  # 后端 Python 入口与服务控制实现
+│   ├── entrypoints/                  # ASGI 暴露及配置导出、维护入口
 │   │   ├── __init__.py
 │   │   ├── cli.py                    # 配置/OpenAPI 导出、迁移、备份命令
-│   │   ├── service.py                # TOML 配置、前台运行与后台启停
-│   │   └── service_control.py        # 实例身份、锁及本地认证控制通道
+│   │   └── api.py                    # 仅导入 create_app，app = create_app()
 │   ├── migrations/
 │   │   ├── __init__.py               # 迁移包，不在导入时执行迁移
 │   │   ├── operations.py             # Alembic 配置、head 查询、显式升级
@@ -113,20 +114,20 @@ fullstack-starter/
 │   │   └── types/api.generated.d.ts   # 自动生成，随源码维护
 │   ├── e2e/welcome.spec.ts
 │   └── dist/                         # 构建输出，不纳入 Git
-├── .run/                             # instance.json、run.lock、control.lock、console.log
+├── .run/                             # instance.json、console.log，不存放服务锁
 ├── .data/                            # app.sqlite3、app.sqlite3.lock、backups/
 └── logs/                             # app.log
 ```
 
 后端与前端各自维护依赖；根目录不增加前端工作区包或统一运行器。随附目录及常见依赖、构建、日志、SQLite 辅助文件和私有文件模式被 Git 忽略；自定义运行路径需同步核对忽略规则。
 
-项目根 `entrypoints/` 只存放 Shell 入口，`backend/entrypoints/` 保留 Python 实现，`scripts/` 存放项目生成等工程工具。`entrypoints/service.sh` 从自身位置向上一级定位项目根目录，再通过 `uv run --no-sync` 查询预装的 Python 解释器，切入后端目录并直接 `exec` 该解释器运行 `entrypoints.service`。uv 查询完成后退出，不常驻转发信号，Shell 启动 PID 即实际服务 PID，启停命令不触发依赖同步；后端 `service.py` 解析必填的 `run/start/status/stop/restart`，未指定 `--config` 时读取 `configs/app.toml`。前台 `run` 通过 Python loader 读取显式 TOML，后台子进程通过同一配置校验器消费父进程冻结的原始文档，不重新读取源文件；两者装配相同日志及工厂，通过 `uvicorn.Server.run()` 运行；`service_control.py` 负责实例身份、锁与认证控制通道，应用模块不依赖服务管理代码。`scripts/create_project.py` 是面向整个仓库的创建工具，仅依赖标准库，由 `create-project.sh` 调用。依赖方向为入口和工具调用应用，`app/` 保留运行基础和业务分层，不反向依赖可执行入口。Ruff 使用后端配置同时检查 `backend/` 和根目录的创建器。
+根 entrypoints 只放 service.sh，直接实现五个管理命令。ps 提供 PID/启动时间，jq 读写记录，stat 检查权限，lsof/curl 检查监听和健康，Shell 发信号并用自有 sleep 子进程处理等待预算。后台使用 nohup，忽略 SIGHUP，不再创建 Python 独立会话。Python 只校验/导出配置 JSON、装配应用和日志，service_control.py 已删除；status/stop 不调用 Python/uv。运维负责串行管理，不提供服务锁。
 
 `backend/entrypoints/cli.py` 作为 `entrypoints.cli` 运行，处理配置/OpenAPI 导出、数据库维护命令的参数、对象组装和事件循环边界；具体能力仍由应用配置、`app/maintenance/` 与 `backend/migrations/` 提供。应用模块不导入 CLI，前端工程工具通过子进程调用该入口。
 
-`app/utils/` 存放供应用与工程工具复用的底层辅助模块，由调用方提供必要参数，包入口保持轻量。当前模块均仅依赖标准库：`path_safety.py` 提供应用配置和创建器共用的路径保护规则；`database_lock.py` 提供运行服务与离线迁移共用的数据库文件锁。辅助模块不反向依赖配置、业务服务或工具模块。
+`app/utils/` 存放供应用与工程工具复用的底层辅助模块，由调用方提供必要参数，包入口保持轻量。当前模块均仅依赖标准库：`path_safety.py` 提供应用配置和创建器共用的路径保护规则；`database_lock.py` 提供运行服务与离线迁移共用的数据库文件锁；`lazy_proxy.py` 只将属性读取转发给传入的 getter，不持有配置缓存。辅助模块不反向依赖配置、业务服务或工具模块。
 
-`app/infra/` 收拢数据库、日志、静态托管与通用 HTTP 适配，包入口只描述职责，不导入实现、注册组件或创建资源。`frontend.py` 提供构建产物检查和文件服务，应用工厂的 `_mount_frontend()` 决定是否挂载、传入配置并维护 API 优先顺序，lifespan 按需执行产物检查。`middleware.py` 负责 Host/Origin、trace、响应头与请求日志，`errors.py` 负责标准错误响应和异常到 HTTP 的映射，错误模型仍由 `schemas/common.py` 定义。应用工厂、服务入口、维护模块与迁移环境按需使用实现，资源创建和关闭仍由原有生命周期管理。配置模块保留原位，`utils/` 继续承担底层辅助职责。
+`app/infra/` 收拢数据库、日志、静态托管与通用 HTTP 适配，包入口只描述职责，不导入实现、注册组件或创建资源。`frontend.py` 的 `FrontendFiles()` 和 `check_frontend_directory()` 直接读取 settings，不再由应用工厂转传构建目录和文档保留路径；`_mount_frontend()` 决定是否挂载并维护 API 优先顺序。文件服务构造时不检查产物，lifespan 按需执行检查。`middleware.py` 负责 Host/Origin、trace、响应头与请求日志，`errors.py` 负责标准错误响应和异常到 HTTP 的映射，错误模型仍由 `schemas/common.py` 定义。应用工厂、服务入口、维护模块与迁移环境按需使用实现，资源创建和关闭仍由原有生命周期管理。配置模块保留原位，`utils/` 继续承担底层辅助职责。
 
 ## 后端职责与数据库
 
@@ -144,30 +145,30 @@ fullstack-starter/
 
 数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
 
-`application.py` 按装配阶段拆成同文件函数：`create_app(settings)` 显式接收 Settings，创建本地 provider 与 FastAPI，保存应用级依赖并依次注册中间件、异常处理、API 路由、OpenAPI 配置与前端。单条中间件注册直接保留在工厂中，异常处理使用模块限定调用 `errors.register_error_handlers(application)`，随后装配 API、OpenAPI 与 SPA。
+普通运行时模块顶部直接 from app.config import settings，函数执行时读取属性；CLI 和测试保留加载、getter 和绑定接口，telemetry 轻量入口继续函数内导入。create_app() 先桥接白名单，注入无 SDK 资源适配器，再装配中间件、异常处理、API、OpenAPI 和前端；真实 provider 只在生命周期内创建，不保存到 app.state，API 先于 SPA。
 
-| 函数                                     | 职责                                                                                 |
-| ---------------------------------------- | ------------------------------------------------------------------------------------ |
-| `lifespan(application)`                  | 从当前应用状态取得配置与 provider，检查前端/数据库，创建引擎及会话工厂并清理运行资源 |
-| `_register_api_routes(application)`      | 创建聚合路由，统一 `/api` 前缀和公共错误 Schema，按顺序注册 health 与 hello          |
-| `_configure_openapi(application)`        | 在该应用的 OpenAPI 中补充公开的 ClientSettings Schema                                |
-| `_mount_frontend(application, settings)` | 按配置挂载前端并维护保留路径，位于 API 注册之后                                      |
+| 函数                                | 职责                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------------- |
+| `lifespan(application)`             | 先初始化日志，进入 provider 和 Session 工厂作用域，检查前端/数据库并按顺序关闭资源 |
+| `_register_api_routes(application)` | 创建聚合路由，统一 `/api` 前缀和公共错误 Schema，按顺序注册 health 与 hello        |
+| `_configure_openapi(application)`   | 在该应用的 OpenAPI 中补充公开的 ClientSettings Schema                              |
+| `_mount_frontend(application)`      | 读取是否托管前端，按需挂载 FrontendFiles，位于 API 注册之后                        |
 
-配置、数据库会话工厂与 trace provider 绑定具体应用，不新增全局 Settings 或数据库/provider 单例；Loguru 沿用现有进程级配置，具体 HTTP 处理器仍位于 `routers/`。模块导入和 OpenAPI 导出不连接数据库、不创建日志、不要求前端产物存在。模块级 lifespan 保持原有清理顺序：await 引擎释放后解锁，再关闭 provider 并等待日志队列；启动失败或取消继续传播，OpenAPI CLI 的 provider 仍由导出路径显式关闭。
+config.py 导出固定的 lazy_proxy 属性读取入口，get_settings() 缓存真实模型，bind_settings() 仅改变内部绑定，不替换公开代理。CLI 严格加载并绑定 --config 所选真实实例后再执行，运行期间不重绑；测试在资源关闭后恢复原缓存，包括未加载状态。导入和 repr 不读取 TOML，真实类型与序列化操作使用 getter 或 loader 返回的对象，详见[配置访问](configuration.md#python-配置访问)。临时迁移仅传数据库路径，不改变配置绑定。Session 工厂与 SDK provider 的生命周期作用域不变，不经 app.state 传递；应用构建和 OpenAPI 导出不创建真实 provider、Session 工厂、数据库连接或日志，也不要求前端产物。关闭顺序仍为清除 Session 工厂、await 引擎释放、解锁、清除并关闭 SDK provider、等待日志。
 
-SQLite 使用本机文件系统，实际库版本至少为 3.51.3。连接启用外键、有限锁等待和显式 BEGIN；日志模式、持久化级别和池容量来自配置。WAL 保留单写入者约束，异步驱动不会将 SQLite 变成多写入者数据库。
+SQLite 使用本机文件系统，实际库版本至少为 3.51.3。数据库适配保持 app/infra/database.py 单模块，分离私有的目标路径校验、SQLite 连接初始化及显式 BEGIN 回调，create_database_engine() 负责引擎装配并仅为当前引擎注册事件。模块导入不创建引擎或 Session 工厂，不注册全局引擎监听；不引入多数据库分支、DAO、审计或软删除层。同进程只允许一个活跃的 Session 工厂作用域，get_session() 不接收 Request，通过模块工厂创建独占 Session；未初始化、关闭后或重复初始化均明确报错，事务仍由业务边界控制，细节见[数据库调用约定](database.md#异步数据库调用约定)。连接启用外键、有限锁等待和显式 BEGIN；日志模式、持久化级别和池容量仍取配置，正常连接拒绝隐式建库。WAL 保留单写入者约束，异步驱动不会将 SQLite 变成多写入者数据库。
 
 SQLite 完整性基线的依据见[数据库指南](database.md#sqlite-版本要求)；模型索引与约束命名见[模型约束约定](database.md#模型约束与命名)。
 
 初始迁移仅建立 Alembic 版本记录。建库与升级必须显式执行维护命令，正常启动不运行迁移或 `create_all()`。Alembic 的同步命令入口管理事件循环，通过 `AsyncConnection.run_sync()` 执行 DDL 桥接，不另建同步运行时引擎。已有数据的结构变更必须审查迁移，必要时使用 SQLite batch migration。
 
-迁移代码集中在 `backend/migrations/`：`operations.py` 管理 Alembic 配置、head 查询和带停服保护的升级；`env.py` 复用引擎构造并执行 DDL；`versions/` 保存历史；`development.py` 负责隔离临时库上的重放、生成与检查。运行时 `app/infra/database.py` 通过 operations 查询期望版本，operations 不反向依赖引擎模块，避免循环依赖。开发命令不连接日常库，应用数据库升级仍需显式执行。
+迁移代码集中在 backend/migrations/：operations.py 管理配置、源码 head 和显式升级；env.py 要求明确的绝对 database_path 再创建引擎，缺失时报错；development.py 用导入的 settings 在独占临时目录确定目标并重放、生成和检查，不派生或切换配置。运行时通过 operations 查询版本，operations 不反向依赖引擎。开发命令不连接日常库，应用升级仍须显式执行。
 
 生成、审查、旧数据回归、迁移脚本能力及恢复边界统一见[数据库指南](database.md#迁移生成审查与验证)。测试中真实历史重放与合成机制验证分开，baseline 的空表断言只针对 `0001_baseline`。
 
 应用 lifespan 与离线升级持有同一个数据库文件锁，防止相同数据库的重复服务或迁移并发；启动时先检查数据库存在，关闭连接后释放锁。维护前直接执行 `stop`，或在前台服务终端按 Ctrl+C，并确认清理完成；维护 CLI 仍需指定目标数据库的完整配置。锁路径从实际数据库路径派生，例如 `.data/app.sqlite3.lock`，文件可保留，运行期间不删除；该机制只约束使用它的本机进程，其他数据库使用者也必须先停止。
 
-`maintenance/backup.py` 的 `DatabaseBackup` 接收配置，异步创建并校验独占命名的快照；CLI 负责参数、组装和事件循环。备份对象不管理服务状态，停服、版本匹配与恢复副本的操作步骤见[数据库指南](database.md#数据库与备份)。
+maintenance/backup.py 的 DatabaseBackup 执行时读取 settings，异步创建并校验独占快照；CLI 绑定配置后直接实例化备份或迁移类，不经过空工厂。备份对象不管理服务状态，恢复与版本匹配步骤见[数据库指南](database.md#数据库与备份)。
 
 ## 前端与接口契约
 
@@ -182,7 +183,7 @@ TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取�
 
 成功响应直接返回 Schema；错误统一为 `code`、`message`、`details`、`trace_id`。未预期的内部细节进入日志，不返回给浏览器。未知 API 和缺失静态资源返回真实 404；仅页面导航可回退到 SPA HTML。查询按配置有限重试，写请求重试次数必须显式配置为 0。
 
-FastAPI 原生 telemetry 使用应用显式创建的本地 SDK `TracerProvider` 管理请求上下文。官方 W3C propagator 解析 `traceparent`：有效时继承 trace ID，缺失或无效时由 SDK 创建新的 trace ID；每次请求均创建新的服务端 span ID。ID 由 SDK 的随机生成器提供，不再校验 UUID 版本。字段长度、大小写、全零值和版本扩展由官方解析器判断；1.45.1 容忍头部两端空白，对重复请求头使用首个值，不叠加自定义解析规则。[FastAPI 原生 telemetry](https://fastapi.tiangolo.com/advanced/opentelemetry/)
+FastAPI 原生 telemetry 通过公共 TracerProvider/Tracer API 适配入口使用 lifespan 作用域内的本地 SDK provider。适配入口只保存插桩元数据，FastAPI 即使缓存 tracer，后续每次 span 操作也会读取当前作用域的真实 provider；未初始化或已关闭时报错，不自动创建资源，不修改 FastAPI 私有属性或设置全局 provider。官方 W3C propagator 解析 traceparent：有效时继承 trace ID，缺失或无效时由 SDK 创建新 trace ID；每次请求创建新的服务端 span ID，沿用 SDK 随机 ID 生成器。解析行为仍由官方库决定，1.45.1 容忍头部两端空白，对重复请求头取首个值，不叠加自定义规则。[FastAPI 原生 telemetry](https://fastapi.tiangolo.com/advanced/opentelemetry/)
 
 采样器固定为 `ALWAYS_OFF`。原生请求 span 使用不记录数据的上下文；metrics、OTel logs、operation_spans、SDK 内部指标与自动导出全部关闭，provider 不注册采集/导出 processor 或 exporter。即使上游标记为采样，也不会启用本地记录。业务项目如需采集，应另行设计配置和数据处理边界。
 
@@ -190,33 +191,31 @@ FastAPI 原生 telemetry 使用应用显式创建的本地 SDK `TracerProvider` 
 
 500 处理器从请求状态恢复日志上下文和保存的响应头，保证中间件退出后仍关联本次服务端 span。同一链路的请求可以共享 trace ID；不再提供 `X-Trace-ID`、`request_id` 或 `X-Request-ID`。错误响应继续保留 no-store 和 nosniff，HTTP 异常仅透传 Allow、WWW-Authenticate、Retry-After 协议头。前端错误对象继续从错误体读取 `trace_id`，不依赖自定义响应头。
 
-`app/telemetry/` 负责导入前环境隔离、本地 provider 装配和全局传播器安装；不替换全局 tracer/meter/logger provider。lifespan 在正常退出及启动失败时关闭 provider，OpenAPI CLI 在导出后显式关闭。具体开关、环境白名单和进程边界统一见[配置约定](configuration.md#遥测上下文与环境隔离)。
+app/telemetry/ 的包入口只导出轻量 getter 和作用域，不提前加载配置、适配器或 SDK，保证 app 包入口先清理外部环境。environment.py 在构建和 provider 初始化阶段桥接白名单，provider.py 在作用域内创建 SDK 资源并安装官方传播器，adapter.py 负责公共 API 转发。日志初始化失败时没有真实 provider，创建失败仍等待日志，正常、异常和取消退出均由作用域清除并关闭已创建 provider。具体开关、白名单和进程边界见[配置约定](configuration.md#遥测上下文与环境隔离)。
 
 接口类型链路为 Pydantic Schema → CLI 导出 OpenAPI → openapi-typescript → `api.generated.d.ts`。生成文件由生成器维护，Prettier 忽略它；检查模式发现过期类型时失败而不改写文件。编译期类型不能代替服务端运行时校验。后续业务的时间按 UTC 保存和输出，API 使用带时区的 ISO 8601。
 
 ## 配置、访问与进程边界
 
-全部配置字段及分组均必填，固定引导入口为 `configs/app.toml`，CLI 可通过 `--config` 显式选择另一份完整 TOML。缺项、未知项、错误类型和非有限值明确失败；不从环境变量、`.env` 或旧 JSON 补值，不隐式合并配置。`0`、`false`、空列表保留其明确含义。固定入口位置、协议常量和安全规则留在代码，详见 [配置约定](configuration.md)。
+Uvicorn 启动参数固定在 service.sh：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker、并发不限，不读取 .env 或环境覆盖。其余参数仍来自 configs/app.toml，通过 --config 另选；所有字段必填，保留严格校验、零值语义和路径保护，见[配置约定](configuration.md)。创建器和隔离测试只改生成副本或临时副本的端口常量。
 
-相对数据、备份、日志和前端路径一律相对于项目根目录。构建工具复用 Python 校验器，只把 `client` 和应用标题/版本注入浏览器，私有路径和完整服务配置不打包。后端参数改动需重启，前端公开参数改动需重新构建。工具自身的 PATH、缓存位置和浏览器安装目录不作为应用配置来源。
+service.sh 通过 entrypoints.cli 的 export-service-settings 获取 TOML 来源、日志和等待预算，自行计算固定地址、登记实例并 exec Uvicorn CLI。Shell 与 Uvicorn 的 PID/启动时间不变，不 eval 数据；entrypoints/api.py 只保留 create_app 导入和 app = create_app()，不再保留 service.py 或 create_service_app 包装。应用工厂读取 config.settings 构建应用，不初始化日志或登记实例；lifespan 先配置日志，再检查和管理运行资源，请求依赖的资源归属不变。
 
-随附 TOML 绑定 `127.0.0.1:18001`，Vite 使用 `127.0.0.1:5173` 并代理到后端。使用 Vite 时设置 `serve_frontend = false`；切回完整应用时设置 `serve_frontend = true` 并构建。Host 与 Origin 允许列表保护本机入口；局域网或远程共享需单独设计认证和访问策略。
+固定 .run 只保存 instance.json、console.log 及原子更新期间的 instance.json.pending，不创建 control.lock 或 run.lock。五个命令不提供并发互斥，已有实例检查只方便串行使用；运维负责避免并发启停和非预期多实例。保留记录的 0600、文件所有者和符号链接保护。数据库维护锁保持原机制，与服务管理无锁的选择分开。
 
-服务始终单 worker，Shell 只定位环境并转发参数，Python 入口提供五个必填子命令。`run` 前台运行，`start` 以独立会话启动同一 `run` 路径，等待该实例的 Uvicorn 已启动且健康 API 返回数据库正常；只创建进程不算成功。后台标准输出与错误追加到项目根 `.run/console.log`，启动失败给出该路径及应用日志位置。不会执行依赖安装、数据库迁移或前端构建。
+start/run 先核对已有实例，有实例不读取新配置。status/stop 只消费记录中的实际地址、身份和停止期限，不依赖当前配置。restart 预校验目标文件，停止成功后启动，不提供命令锁或配置冻结；运维负责串行调用。默认读取 configs/app.toml；预校验后的文件变化仍可能导致停服后启动失败。后台启动成功要求身份匹配、监听归属和健康 HTTP/JSON 通过。
 
-项目根目录固定使用 `.run/control.lock`、`.run/run.lock` 和 `.run/instance.json`。每个项目只管理一个实例；命令锁以有期限的等待串行执行五个命令，前台 `run` 在完成实例登记后释放命令锁，运行锁覆盖完整生命周期和末尾日志清理。运行期间不删除锁文件。状态记录仅在运行锁持有时有效，遗留记录不能作为向 PID 发信号的依据。
+记录格式 3 只以 PID 和系统启动时间识别进程，另存 TOML 来源、URL、日志与停止期限；删除 UID、完整命令和项目路径字段及比对。系统启动时间固定从 C/UTC 的 ps 结果读取，僵尸进程视为已退出，身份不匹配拒绝发信号。停止在核对后发 SIGINT，并等待同一 PID/启动时间的进程退出，即使记录被删除也不能提前成功；进程查询失败返回错误，保留匹配记录，不能据此判定目标退出；超时不强杀，失败不继续重启。检查与发信号间仍有 PID 复用竞态。正常退出可留下记录，后续按进程实际状态判定失效，stop 在退出后清理匹配记录，新登记原子替换旧记录；旧格式记录拒绝控制，切换前使用旧版代码停服。
 
-`start/run` 在操作锁内先认证已有实例，已有实例时提示并返回 0，不读取指定配置；无实例才读取完整 TOML。`status/stop` 只读取已保存的实例身份、实际 URL、日志和停止期限，不读取 TOML，不因配置变化报告 config-changed。`restart` 在锁内读取、校验并冻结目标配置，然后停止当前实例并后台启动，配置路径可以不同；省略 `--config` 固定选择 `configs/app.toml`。目标在锁内读取时无效则不停止旧实例，校验后的原文件再变化也不影响快照。通用配置解析接口由 `app/config.py` 提供，服务控制代码不写入任何项目特有配置字段。
+服务管理没有并发锁，记录丢失或并发调用都可能导致重复启动，不能靠记录检查提供互斥保证，由运维控制。数据库维护锁只约束同一数据库，不替代项目级实例发现。这是当前明确接受的本地运行分工。
 
-后台启动通过匿名继承描述符传递原始 TOML 文档和规范化来源路径，子进程不重新打开原文件；原始配置快照只通过匿名描述符传递，不进入具名文件、日志或参数。控制通道随机令牌仅写入 0600 的 `.run/instance.json` 及原子替换期间同权限的 `instance.json.pending`，不进入配置快照、日志、命令行或 Git。状态文件协议版本为 1，以 0600 权限原子写入，包含 PID、UTC 启动时间、规范化公开启动命令、项目根、来源路径、快照指纹、认证控制端口、随机凭据、实际 HTTP 地址、日志与停止期限。`command` 去除内部 `--settings-fd`，可重新调用公开入口，但不携带原启动快照，也不承诺重新加载时的配置与原快照一致。控制通道仅监听回环地址，验证凭据、PID 与指纹；停止请求由目标进程向自身发送 SIGINT，不从外部按文件 PID 或端口发信号。路径保护在运行文件边界执行，不因不加载配置而失效；旧的活跃实例协议不能被新版本接管，升级前先用原版本停服。
+管理命令依赖 ps、lsof、curl。管理成功 0、status 已停止 3、参数错误 2、其他错误 1，管理命令中断仍为 130/143。前台 run 透传 Uvicorn 原生退出结果，不统一转换信号退出码；当前锁定版本在服务运行后接收 SIGINT 可返回 0，SIGTERM 按信号结束，lifespan 启动失败可返回 3。服务工厂不安装进程信号处理器或 atexit 钩子，不接管重复信号，也不额外保证最后几条 Uvicorn 日志排空。后台管理仍等待进程退出，超时不强杀，失败不继续重启，查询中断不停止既有实例。
 
-`[service]` 提供启动和停止期限，停止期限须大于 Uvicorn 优雅关闭期限。成功返回 0，`status` 已停止返回 3，其他不健康状态或执行错误为 1，参数错误为 2，所有 Ctrl+C 中断为 130。前台 `run` 收到 Ctrl+C 先沿用 Uvicorn 完成优雅停服，返回 130；命令分发期间统一处理 SIGTERM 并返回 143；前台 run 完成资源、日志和实例清理，后台启动命令回收自己新建的子进程，查询和停止等待的中断不对既有实例补发信号，也不继续重启。末尾清理忽略重复 SIGINT/SIGTERM，之后恢复原处理器。停止或回收超时保留实例且不强杀，restart 不继续启动。命令锁等待上限为 40 秒，单次控制连接为 0.5 秒，HTTP 健康探测默认 1 秒；启动期探测取默认值与剩余启动期限中的较小值。运行锁已占用但身份尚未登记时，start/run 返回 0 仅表示不再启动第二实例；status 返回 starting/1，stop 因身份不明返回 1，不发信号。
+日志由 lifespan 在 try 内开始处统一配置，再创建真实 provider 和检查前端/数据库；日志初始化失败时不创建 provider，所有退出路径仍等待日志。导入 api.py、应用构建和 OpenAPI 导出均不创建日志。Uvicorn 进入 lifespan 前的启动消息保留原生控制台输出，初始化后的日志使用 Loguru，后台控制台追加到 .run/console.log。数据库、provider 和应用阶段日志清理顺序不变；不额外注册进程级排空钩子，不保证 Uvicorn 最后几条队列日志全部写入。日志取 TOML logging，不注册开机自启或崩溃重拉。
 
-资源先由 lifespan 关闭，入口随后排空末尾日志、关闭控制线程并移除实例记录，最后释放运行锁；启动失败回收及末尾清理期间临时忽略重复 SIGINT/SIGTERM，随后恢复处理器。运行期间仍保留 Uvicorn 原生信号行为，不注册开机自启、崩溃重拉或业务后台任务。
+E2E 由 Playwright 向自有服务进程组发送 SIGINT，使用 Uvicorn 原生 Ctrl+C 路径并等待退出；不再依赖自定义信号转换或末尾日志保证。运行器中断或超时时也先向自有进程组发送 SIGINT，保留既有等待期限及仅针对自有临时进程的最终 SIGKILL 回收。服务控制命令和后端测试辅助器超时不强杀；E2E 超时必须失败并保留诊断，强制回收不证明应用资源清理完成。
 
-E2E 由 Playwright 向自有服务进程组发送 SIGINT，沿用前台 Ctrl+C 的原生关闭路径，使服务入口的日志排空与 Python 退出清理完成。运行器收到 SIGINT/SIGTERM 或命令超时时，也先向自有子进程组发送 SIGINT，保留既有等待期限与 SIGKILL 兜底。Uvicorn 在优雅关闭后重发信号；入口把重发的 SIGTERM 转为可展开 Python 清理栈的 143 退出，避免默认终止动作跳过实例清理。服务控制命令与后端测试辅助器超时不强杀；E2E 的 SIGKILL 仅是回收自有临时进程的例外，命令超时始终失败并保留诊断。强制终止不保证资源清理或日志完整写入。
-
-`app/infra/logging.py` 提供 `configure_logging(settings)`，标准库日志模块使用 `std_logging` 别名，与 Loguru 的 `logger` 实例区分；应用工厂与服务入口负责调用，infra 包入口不自动初始化日志。Loguru 将应用、链路标识和 Uvicorn 日志通过 `enqueue=True` 交给后台线程写入配置目录；配置与导入阶段的错误直接显示在终端；运行日志由 `logging.console` 决定是否同时输出到终端。应用 lifespan 清理时和服务入口退出时等待日志队列处理完成，不记录局部变量诊断。日志目录和 SQLite 数据目录随附配置均在项目根目录下。
+app/infra/logging.py 的 configure_logging() 读取 settings.logging，分组局部变量命名 logging_settings；std_logging 与 Loguru logger 保持区分。RequestMiddleware 从导入的 settings 读取主机、Origin 和请求日志开关。日志仍在 lifespan 初始化，仅日志适配器测试直接调用该函数；队列和敏感信息保护不变，不增加进程级排空。
 
 ## V1 范围与验收
 

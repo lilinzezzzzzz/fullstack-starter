@@ -6,6 +6,7 @@ from alembic.migration import MigrationContext
 from sqlalchemy import CheckConstraint, Connection, Index, MetaData, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app import config
 from app.infra.database import create_database_engine
 from app.models import Base
 from tests.helpers import settings_for
@@ -47,7 +48,8 @@ async def test_representative_model_builds_and_autogenerates_distinct_indexes(
         Example.metadata.create_all(connection)
         assert produce_migrations(context, Example.metadata).upgrade_ops.is_empty()
 
-    engine = create_database_engine(settings_for(tmp_path), allow_create=True)
+    config.bind_settings(settings_for(tmp_path))
+    engine = create_database_engine(allow_create=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(verify)

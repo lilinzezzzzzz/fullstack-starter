@@ -29,6 +29,8 @@ SOURCE_FILES = (
     ".node-version",
     ".prettierrc.toml",
     ".prettierignore",
+    ".env",
+    ".env.example",
 )
 RESERVED_RUNTIME_DIRECTORIES = (
     "private",

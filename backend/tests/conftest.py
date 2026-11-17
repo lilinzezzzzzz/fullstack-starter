@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app import config
 from app.application import create_app
 from app.config import Settings
 from migrations.operations import upgrade_database
@@ -20,13 +21,24 @@ def anyio_backend() -> str:
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     settings = settings_for(tmp_path)
-    upgrade_database(settings)
+    config.bind_settings(settings)
+    upgrade_database()
     return settings
+
+
+@pytest.fixture(autouse=True)
+def isolate_settings_binding() -> Iterator[None]:
+    # 保存空缓存也不读取 TOML，待其他资源 fixture 关闭后再恢复原绑定。
+    previous = config.bind_settings(None)
+    try:
+        yield
+    finally:
+        config.bind_settings(previous)
 
 
 @pytest.fixture
 def client(settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
         yield client
 
 

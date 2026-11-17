@@ -1,3 +1,4 @@
-"""遥测包的轻量入口；配置和 SDK 在应用构建阶段加载。"""
+"""遥测包的轻量入口；真实 SDK provider 仅在生命周期作用域中创建。"""
 
-from app.telemetry.provider import new_tracer_provider as new_tracer_provider
+from app.telemetry.provider import get_tracer_provider as get_tracer_provider
+from app.telemetry.provider import tracer_provider_scope as tracer_provider_scope

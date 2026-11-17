@@ -1,13 +1,13 @@
 import asyncio
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import Connection
 
-from app.config import CONFIG_FILE, load_settings
 from app.infra.database import create_database_engine
 from app.models import Base
 
-config = context.config
+alembic_config = context.config
 
 
 def run_migrations_offline() -> None:
@@ -33,10 +33,10 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    settings = config.attributes.get("settings")
-    if settings is None:
-        settings = load_settings(CONFIG_FILE)
-    engine = create_database_engine(settings, allow_create=True)
+    database_path = alembic_config.attributes.get("database_path")
+    if not isinstance(database_path, Path) or not database_path.is_absolute():
+        raise ValueError("An explicit absolute database_path is required for migrations")
+    engine = create_database_engine(database_path=database_path, allow_create=True)
     try:
         async with engine.connect() as connection:
             await connection.run_sync(do_run_migrations)

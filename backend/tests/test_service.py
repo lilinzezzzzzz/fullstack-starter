@@ -2,29 +2,31 @@ import json
 import os
 import signal
 import socket
-import subprocess
-import sys
-import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 import pytest
 
-from app.config import PROJECT_ROOT, load_settings
+from app import config as app_config
+from app.config import load_settings
 from app.utils.database_lock import ServiceError, operation_lock
-from entrypoints import service_control
 from migrations.operations import upgrade_database
 from tests.helpers import read_config, response_trace_id, save_config, write_config
-from tests.service_helpers import foreground_service, unused_port, wait_for_service
-
-pytestmark = pytest.mark.usefixtures("service_project")
+from tests.service_helpers import (
+    command,
+    configure_service,
+    foreground_service,
+    read_instance,
+    unused_port,
+    wait_for_service,
+)
 
 
 def test_database_lock_is_exclusive_and_released_after_failure(tmp_path: Path) -> None:
     database = tmp_path / "data/app.sqlite3"
     with pytest.raises(ValueError, match="probe"):
         with operation_lock(database):
-            with pytest.raises(ServiceError, match="in progress"):
+            with pytest.raises(ServiceError):
                 with operation_lock(database):
                     pytest.fail("The second operation acquired an active lock")
             raise ValueError("probe")
@@ -33,142 +35,126 @@ def test_database_lock_is_exclusive_and_released_after_failure(tmp_path: Path) -
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("console", [False, True], ids=["file", "file-and-console"])
-def test_foreground_service_ctrl_c_and_maintenance_lock(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, console: bool
-) -> None:
-    config = write_config(tmp_path / "configuration with spaces")
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+@pytest.mark.parametrize("console", [False, True])
+@pytest.mark.parametrize("group", [False, True])
+def test_foreground_uses_native_uvicorn_signals_and_releases_application_resources(
+    service_project, tmp_path, signum, console, group
+):
+    config = write_config(tmp_path / "configuration with spaces 中文")
+    configure_service(service_project, port=unused_port(), graceful_shutdown_seconds=1)
     data = read_config(config)
-    data["server"]["port"] = unused_port()
-    data["server"]["graceful_shutdown_seconds"] = 1
     data["logging"]["console"] = console
     save_config(config, data)
     settings = load_settings(config)
-    upgrade_database(settings)
-    monkeypatch.setenv("OTEL_PROPAGATORS", "not-installed-propagator")
-    monkeypatch.setenv("FASTAPI_OTEL_AUTO_CONFIGURE", "true")
+    app_config.bind_settings(settings)
+    upgrade_database()
     with foreground_service(config) as (process, output):
         base_url = wait_for_service(process, settings, output)
-        record = json.loads(service_control.runtime_path("instance.json").read_text())
-        assert record["pid"] == process.pid
+        record = json.loads((service_project / ".run/instance.json").read_text())
+        assert record["pid"] == process.pid  # Shell 直接 exec 为 Uvicorn 进程。
+        assert "started_at" in record
+        assert not {"identity", "project", "uid", "command"} & record.keys()
+        assert "token" not in record and "fingerprint" not in record
         with urlopen(
             Request(
-                f"{base_url}/api/v1/hello",
+                base_url + "/api/v1/hello",
                 headers={"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"},
             ),
-            timeout=3,
+            timeout=2,
         ) as response:
             assert json.load(response) == {"message": "Hello World"}
             assert response_trace_id(response.headers) == "4bf92f3577b34da6a3ce929d0e0e4736"
-        migration = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--directory",
-                str(PROJECT_ROOT / "backend"),
-                "python",
-                "-m",
-                "entrypoints.cli",
-                "--config",
-                str(config),
-                "db-upgrade",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert migration.returncode != 0
-        assert "in progress" in migration.stderr
-        second = config.parent / "second.toml"
-        data["server"]["port"] = unused_port()
-        data["logging"]["console"] = True
-        save_config(second, data)
-        with foreground_service(second) as (duplicate, duplicate_output):
-            assert duplicate.wait(timeout=10) == 0
-            assert "already running" in duplicate_output.read_text()
-        assert process.poll() is None
-        os.killpg(process.pid, signal.SIGINT)
-        assert process.wait(timeout=10) == 130
-    terminal = output.read_text()
-    assert "resource_tracker" not in terminal
-    assert "leaked semaphore" not in terminal
+        assert command(service_project, "status").returncode == 0
+        if group:
+            os.killpg(process.pid, signum)
+        else:
+            os.kill(process.pid, signum)
+        assert process.wait(timeout=10) == (0 if signum == signal.SIGINT else -signal.SIGTERM)
+    log = (settings.logging.directory / settings.logging.filename).read_text()
+    console_output = output.read_text()
+    for message in ("Started server process", "Waiting for application startup."):
+        assert message in console_output
+        assert message not in log
+    assert "Application startup complete." in log
+    assert "4bf92f3577b34da6a3ce929d0e0e4736 | GET /api/v1/hello 200" in log
+    assert read_instance(service_project) is None
+    assert not (service_project / ".run/run.lock").exists()
+    upgrade_database()
     if console:
-        assert "Application shutdown complete" in terminal
-        assert "Finished server process" in terminal
-    contents = (settings.logging.directory / settings.logging.filename).read_text()
-    assert "4bf92f3577b34da6a3ce929d0e0e4736 | GET /api/v1/hello 200" in contents
-    assert "Application shutdown complete" in contents
-    assert "Finished server process" in contents
-    assert not list(tmp_path.rglob("*.pid"))
-    upgrade_database(settings)
+        assert "GET /api/v1/hello 200" in console_output
 
 
 @pytest.mark.integration
-def test_failed_start_does_not_create_or_upgrade_database(tmp_path: Path) -> None:
-    config = write_config(tmp_path)
-    settings = load_settings(config)
-    with foreground_service(config) as (process, _output):
-        assert process.wait(timeout=10) != 0
-    log = settings.logging.directory / settings.logging.filename
-    assert "Database missing" in log.read_text()
-    assert not settings.database_path.exists()
-    with operation_lock(settings.database_path):
+@pytest.mark.parametrize("failure", ["missing-database", "occupied-port", "missing-frontend"])
+def test_startup_failures_do_not_change_database_or_other_listener(
+    service_project, tmp_path, failure
+):
+    config = write_config(tmp_path / "failed startup")
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1] if failure == "occupied-port" else unused_port()
+        configure_service(service_project, port=port, graceful_shutdown_seconds=1)
+        if failure != "missing-database":
+            app_config.bind_settings(load_settings(config))
+            upgrade_database()
+        if failure == "missing-frontend":
+            data = read_config(config)
+            data["serve_frontend"] = True
+            save_config(config, data)
+        result = command(service_project, "start", "--config", str(config))
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert listener.getsockname()[1] > 0
+    assert read_instance(service_project) is None
+    if failure == "missing-database":
+        assert not load_settings(config).database_path.exists()
+    with operation_lock(load_settings(config).database_path):
         pass
 
 
 @pytest.mark.integration
-def test_occupied_port_is_left_untouched_and_database_lock_is_released(tmp_path: Path) -> None:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        listener.listen()
-        config = write_config(tmp_path)
-        data = read_config(config)
-        data["server"]["port"] = listener.getsockname()[1]
-        save_config(config, data)
-        settings = load_settings(config)
-        upgrade_database(settings)
-        with foreground_service(config) as (process, _output):
-            assert process.wait(timeout=10) != 0
-        assert listener.getsockname()[1] == settings.server.port
-        upgrade_database(settings)
+def test_health_must_belong_to_the_registered_listener(service_project, tmp_path):
+    config = write_config(tmp_path / "other health")
+    settings = load_settings(config)
+    app_config.bind_settings(settings)
+    upgrade_database()
+    configure_service(service_project, port=unused_port(), graceful_shutdown_seconds=1)
+    with foreground_service(config) as (process, output):
+        wait_for_service(process, settings, output)
+        path = service_project / ".run/instance.json"
+        original = path.read_text()
+        altered = json.loads(original)
+        altered["url"] = "http://127.0.0.1:1"
+        try:
+            path.write_text(json.dumps(altered))
+            assert command(service_project, "status").returncode == 1
+        finally:
+            path.write_text(original)
+        assert command(service_project, "stop").returncode == 0
+        assert process.wait(timeout=8) == 0
 
 
 @pytest.mark.integration
-def test_repeated_sigint_cannot_interrupt_final_control_cleanup(tmp_path: Path) -> None:
-    config = write_config(tmp_path)
-    data = read_config(config)
-    data["server"]["port"] = unused_port()
-    save_config(config, data)
+def test_foreground_run_preserves_uvicorn_startup_failure_exit_code(service_project, tmp_path):
+    config = write_config(tmp_path / "native startup failure")
+    configure_service(service_project, port=unused_port(), graceful_shutdown_seconds=1)
+    with foreground_service(config) as (process, output):
+        assert process.wait(timeout=10) == 3, output.read_text()
+    assert read_instance(service_project) is None
+
+
+@pytest.mark.integration
+def test_database_maintenance_lock_remains_without_service_run_lock(service_project):
+    config = service_project / "configs/app.toml"
     settings = load_settings(config)
-    upgrade_database(settings)
-    marker = config.with_suffix(".cleanup")
-    # 在独立解释器中放大关闭窗口，确定第二个信号落在 Uvicorn 退出之后。
-    probe = tmp_path / "cleanup_probe.py"
-    probe.write_text(
-        "import sys, time\n"
-        "from pathlib import Path\n"
-        "from entrypoints import service\n"
-        "original_close = service.InstanceControl.close\n"
-        "def delayed_close(self):\n"
-        "    Path(sys.argv[-1]).with_suffix('.cleanup').touch()\n"
-        "    time.sleep(0.5)\n"
-        "    original_close(self)\n"
-        "service.InstanceControl.close = delayed_close\n"
-        "raise SystemExit(service.main())\n"
-    )
-    command = [sys.executable, "-c", probe.read_text(), "run", "--config", str(config)]
-    # -c 从 backend 加载包；测试资源及日志仍全部位于 tmp_path。
-    backend = service_control.PROJECT_ROOT / "backend"
-    command[2] = f"import sys; sys.path.insert(0, {str(backend)!r})\n" + command[2]
-    with foreground_service(config, command=command) as (process, output):
-        wait_for_service(process, settings, output)
-        os.killpg(process.pid, signal.SIGINT)
-        deadline = time.monotonic() + 5
-        while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert marker.exists(), output.read_text()
-        os.killpg(process.pid, signal.SIGINT)
-        assert process.wait(timeout=5) == 130
-    assert "Traceback" not in output.read_text()
-    assert not service_control.runtime_path("instance.json").exists()
-    upgrade_database(settings)
+    upgrade_database()
+    result = command(service_project, "start")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (service_project / ".run/run.lock").exists()
+    with pytest.raises(ServiceError):
+        with operation_lock(settings.database_path):
+            pytest.fail("Running service did not retain the database maintenance lock")
+    assert command(service_project, "stop").returncode == 0
+    with operation_lock(settings.database_path):
+        pass

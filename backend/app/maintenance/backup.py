@@ -8,7 +8,7 @@ from uuid import uuid7
 
 import aiosqlite
 
-from app.config import Settings
+from app.config import settings
 from app.infra.database import check_sqlite_version
 from migrations.operations import migration_heads
 
@@ -16,11 +16,7 @@ from migrations.operations import migration_heads
 class DatabaseBackup:
     """以独占方式创建并校验快照，不负责管理服务状态。"""
 
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-
     async def create_snapshot(self) -> Path:
-        settings = self._settings
         check_sqlite_version()
         if not settings.database_path.is_file():
             raise RuntimeError(
@@ -54,7 +50,7 @@ class DatabaseBackup:
                     raise RuntimeError("Backup integrity check failed.")
                 async with destination.execute("SELECT version_num FROM alembic_version") as cursor:
                     current = {row[0] for row in await cursor.fetchall()}
-                if current != migration_heads(settings):
+                if current != migration_heads():
                     raise RuntimeError(
                         "Backup schema is not current; review migrations before use."
                     )
@@ -62,8 +58,3 @@ class DatabaseBackup:
             target.unlink(missing_ok=True)
             raise
         return target
-
-
-def new_database_backup(settings: Settings) -> DatabaseBackup:
-    """为维护 CLI 组装依赖并创建实例。"""
-    return DatabaseBackup(settings)

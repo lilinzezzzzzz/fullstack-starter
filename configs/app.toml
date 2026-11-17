@@ -44,29 +44,12 @@ redoc_path = "/redoc"
 # OpenAPI JSON 路径，以 / 开头；关闭后仍必填并作为保留路径。
 openapi_path = "/openapi.json"
 
-[server]
-# 前后台共用 Uvicorn 单 worker 服务；管理入口通过 SIGINT 优雅停止。
-# Uvicorn 监听地址；本地使用通常绑定回环地址。
-host = "127.0.0.1"
-# API 监听端口，范围 1–65535；端口占用时启动失败。
-port = 18001
-# 固定单 worker，保持单机 SQLite 与进程级日志的运行边界。
-workers = 1
-# 优雅关闭时等待在途请求/任务结束的期限，秒，必须大于 0。
-graceful_shutdown_seconds = 10.0
-# 空闲 HTTP 连接等待下一请求的秒数；0 不等待。
-keep_alive_seconds = 5
-# 监听套接字的待接入连接队列容量，必须大于 0。
-backlog = 2048
-# Uvicorn 并发连接/任务上限；0 转为不设上限。
-concurrency_limit = 0
-
 [service]
-# 每个项目只允许一个实例，管理文件固定在项目根 .run/，不按配置或数据库另选目录。
+# 管理文件固定在项目根 .run/；服务管理无锁，运维负责避免并发和非预期多实例。
 # 控制台输出为 .run/console.log；应用日志仍使用 [logging]。
 # start 等待 Uvicorn 启动且 /api/health 正常的最长秒数，必须大于 0。
 startup_timeout_seconds = 15.0
-# stop 等待进程退出和日志排空的最长秒数，必须大于 server.graceful_shutdown_seconds。
+# stop 只等待原生进程退出，不额外排空末尾日志；期限须大于 Shell 中固定的原生关闭期限。
 # 超时保留实例信息并报错，不自动 SIGKILL；restart 此时不会启动新进程。
 stop_timeout_seconds = 20.0
 

@@ -1,4 +1,4 @@
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException
@@ -6,9 +6,11 @@ from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
+from app.config import settings
 
-def check_frontend_directory(directory: Path) -> None:
-    if not (directory / "index.html").is_file():
+
+def check_frontend_directory() -> None:
+    if not (settings.frontend_dir / "index.html").is_file():
         raise RuntimeError(
             "Frontend build missing. Run: pnpm --dir frontend build; "
             "or set serve_frontend=false in the configuration file for Vite."
@@ -18,9 +20,14 @@ def check_frontend_directory(directory: Path) -> None:
 class FrontendFiles(StaticFiles):
     """仅提供构建产物，保留 API 路径并限制 HTML 回退范围。"""
 
-    def __init__(self, directory: Path, reserved_paths: list[str]) -> None:
-        self.reserved_paths = {path.strip("/") for path in reserved_paths}
-        super().__init__(directory=directory, html=True, check_dir=False)
+    def __init__(self) -> None:
+        application = settings.application
+        self.reserved_paths = {
+            path.strip("/")
+            for path in (application.docs_path, application.redoc_path, application.openapi_path)
+        }
+        # 产物检查留给 lifespan，构建应用和导出 OpenAPI 不要求目录存在。
+        super().__init__(directory=settings.frontend_dir, html=True, check_dir=False)
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         parts = PurePosixPath(path).parts

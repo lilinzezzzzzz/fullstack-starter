@@ -1,7 +1,8 @@
+import os
 import tomllib
 from datetime import timedelta
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal, Self
+from typing import Annotated, ClassVar, Final, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -13,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.utils.lazy_proxy import lazy_proxy
 from app.utils.path_safety import path_is_relative_to, validate_runtime_paths
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # 相对配置路径的统一解析基准。
@@ -38,7 +40,7 @@ Filename = Annotated[str, AfterValidator(validate_filename)]  # 仅文件名，�
 
 
 class ConfigSection(BaseModel):
-    # 所有字段均由完整 TOML 显式提供；拒绝未知键、不匹配的类型及非有限浮点数。
+    # 来源由入口显式选择；字段全部必填，拒绝未知键、错误类型及非有限浮点数。
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
 
@@ -64,15 +66,11 @@ class ApplicationSettings(ConfigSection):
     def openapi_url(self) -> str | None:
         return self.openapi_path if self.openapi_enabled else None
 
-
-class ServerSettings(ConfigSection):
-    host: str  # Uvicorn 监听地址；本地使用通常绑定回环地址。
-    port: int = Field(ge=1, le=65535)  # API 监听端口；端口占用时启动失败。
-    workers: Literal[1]  # 固定单 worker，保持单机 SQLite 与进程级日志的运行边界。
-    graceful_shutdown_seconds: float = Field(gt=0)  # 优雅关闭时等待在途请求/任务结束的期限，秒。
-    keep_alive_seconds: int = Field(ge=0)  # 空闲 HTTP 连接等待下一请求的秒数；0 不等待。
-    backlog: int = Field(gt=0)  # 监听套接字的待接入连接队列容量。
-    concurrency_limit: int = Field(ge=0)  # Uvicorn 并发连接/任务上限；0 转为不设上限。
+    @model_validator(mode="after")
+    def check_documentation(self) -> Self:
+        if not self.openapi_enabled and (self.docs_enabled or self.redoc_enabled):
+            raise ValueError("Interactive documentation requires openapi_enabled=true")
+        return self
 
 
 class DatabaseSettings(ConfigSection):
@@ -226,7 +224,6 @@ class Settings(ConfigSection):
     allowed_hosts: list[str]  # Host 主机名白名单，不含端口；空列表拒绝所有主机。
     allowed_origins: list[str]  # 额外允许的 Origin（协议/主机/端口），同源无需列入。
     application: ApplicationSettings  # 应用标识与文档入口，全部字段必填。
-    server: ServerSettings  # Uvicorn 监听、连接及关闭参数。
     service: ServiceSettings  # 本机服务管理的启动与停止等待期限。
     database: DatabaseSettings  # SQLite PRAGMA 与异步连接池参数。
     logging: LoggingSettings  # Loguru 文件、控制台及请求日志参数。
@@ -236,15 +233,7 @@ class Settings(ConfigSection):
     testing: TestingSettings  # 隔离验证资源、浏览器与执行预算。
 
     @model_validator(mode="after")
-    def check_configuration_relationships(self) -> Self:
-        if self.service.stop_timeout_seconds <= self.server.graceful_shutdown_seconds:
-            raise ValueError(
-                "service.stop_timeout_seconds must exceed server.graceful_shutdown_seconds"
-            )
-        if not self.application.openapi_enabled and (
-            self.application.docs_enabled or self.application.redoc_enabled
-        ):
-            raise ValueError("Interactive documentation requires openapi_enabled=true")
+    def check_runtime_paths(self) -> Self:
         validate_runtime_paths(
             PROJECT_ROOT,
             frontend_dir=self.frontend_dir,
@@ -271,25 +260,38 @@ class Settings(ConfigSection):
         return self._source_file
 
 
-def settings_from_document(document: bytes, source_file: Path) -> Settings:
-    """校验不可变 TOML 文档；原配置路径仅作来源，不重新打开文件。"""
-    if not source_file.is_absolute() or source_file.suffix != ".toml":
-        raise ValueError("Application configuration must be an absolute .toml path")
-    settings = Settings.model_validate(tomllib.loads(document.decode("utf-8")))
-    if path_is_relative_to(source_file, settings.frontend_dir):
-        raise ValueError("Configuration file must not be inside the public frontend directory")
-    settings._source_file = source_file
-    return settings
-
-
-def load_settings_snapshot(config_file: str | Path) -> tuple[Settings, bytes]:
+def load_settings(config_file: str | Path) -> Settings:
+    """读取完整显式 TOML，不读取环境变量、不合并配置或回退取值。"""
     path = resolve_project_path(config_file)
     if path.suffix != ".toml":
         raise ValueError("Application configuration must be a .toml file")
-    document = path.read_bytes()
-    return settings_from_document(document, path), document
+    with path.open("rb") as document:
+        configuration = Settings.model_validate(tomllib.load(document))
+    if path_is_relative_to(path, configuration.frontend_dir):
+        raise ValueError("Configuration file must not be inside the public frontend directory")
+    configuration._source_file = path
+    return configuration
 
 
-def load_settings(config_file: str | Path) -> Settings:
-    """读取完整显式 TOML，不读取环境变量、不合并配置或回退取值。"""
-    return load_settings_snapshot(config_file)[0]
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """首次实际取值时加载完整 TOML，随后复用当前绑定的真实实例。"""
+    global _settings
+    if _settings is None:
+        _settings = load_settings(os.environ.get("APP_CONFIG_FILE", CONFIG_FILE))
+    return _settings
+
+
+def bind_settings(configuration: Settings | None) -> Settings | None:
+    """操作前绑定已校验实例；返回旧缓存供测试恢复，None 表示未加载状态。"""
+    if configuration is not None and not isinstance(configuration, Settings):
+        raise TypeError("Configuration binding requires a real Settings instance or None")
+    global _settings
+    previous = _settings
+    _settings = configuration
+    return previous
+
+
+settings: Final[Settings] = lazy_proxy(get_settings)

@@ -1,12 +1,6 @@
 """隔离外部遥测环境，并将已校验的 TOML 值桥接到仅支持环境变量的入口。"""
 
-from __future__ import annotations
-
 import os
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from app.config import TelemetrySettings
 
 
 def clear_telemetry_environment() -> None:
@@ -16,18 +10,22 @@ def clear_telemetry_environment() -> None:
             del os.environ[name]
 
 
-def configure_telemetry_environment(settings: TelemetrySettings) -> None:
-    """仅在应用构建阶段写入固定白名单，所有值均来自完整 TOML 配置。"""
+def configure_telemetry_environment() -> None:
+    """在应用构建和 provider 初始化阶段写入白名单，不在请求期间改环境。"""
+    # 此模块也由 app 包入口使用；清理外部环境前不能导入配置及第三方库。
+    from app.config import settings
+
+    telemetry = settings.telemetry
     clear_telemetry_environment()
     os.environ.update(
         {
-            "OTEL_SDK_DISABLED": str(settings.sdk_disabled).lower(),
+            "OTEL_SDK_DISABLED": str(telemetry.sdk_disabled).lower(),
             "OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED": str(
-                settings.internal_metrics_enabled
+                telemetry.internal_metrics_enabled
             ).lower(),
-            "OTEL_PYTHON_CONTEXT": settings.context,
-            "OTEL_PROPAGATORS": settings.propagators,
-            "OTEL_INSTRUMENTATION_HTTP_KNOWN_METHODS": ",".join(settings.known_methods),
-            "FASTAPI_OTEL_AUTO_CONFIGURE": str(settings.auto_configure).lower(),
+            "OTEL_PYTHON_CONTEXT": telemetry.context,
+            "OTEL_PROPAGATORS": telemetry.propagators,
+            "OTEL_INSTRUMENTATION_HTTP_KNOWN_METHODS": ",".join(telemetry.known_methods),
+            "FASTAPI_OTEL_AUTO_CONFIGURE": str(telemetry.auto_configure).lower(),
         }
     )

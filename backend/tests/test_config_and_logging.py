@@ -23,7 +23,7 @@ def test_environment_and_dotenv_do_not_override_file(
     settings = load_settings(config)
     assert settings.data_dir == tmp_path / "data"
     assert settings.serve_frontend is False
-    assert settings.server.workers == 1
+    assert "server" not in type(settings).model_fields
 
 
 def test_all_paths_are_root_relative_and_database_filename_is_configurable(tmp_path: Path) -> None:
@@ -43,7 +43,7 @@ def test_invalid_or_missing_configuration_fails(tmp_path: Path, change: str) -> 
     if change == "unknown":
         raw["typo"] = True
     elif change == "workers":
-        raw["server"]["workers"] = 2
+        raw["server"] = {"workers": 2}
     elif change == "filename":
         raw["database_filename"] = "../other.db"
     else:
@@ -77,8 +77,8 @@ def test_fixed_logging_options_are_not_external_configuration(tmp_path: Path, op
 
 
 def test_loguru_file_and_uvicorn_bridge_do_not_duplicate(settings) -> None:
-    configure_logging(settings.logging)
-    configure_logging(settings.logging)
+    configure_logging()
+    configure_logging()
     logger.bind(trace_id="trace-probe").info("loguru-probe")
     std_logging.getLogger("uvicorn.error").info("uvicorn-probe")
     logger.complete()
@@ -89,8 +89,16 @@ def test_loguru_file_and_uvicorn_bridge_do_not_duplicate(settings) -> None:
 
 
 def test_trace_id_is_written_to_loguru_file(settings) -> None:
-    with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
         response = client.get("/api/v1/hello")
     contents = (settings.logging.directory / settings.logging.filename).read_text()
     assert response_trace_id(response.headers) in contents
     assert "GET /api/v1/hello 200" in contents
+
+
+def test_request_logging_can_be_disabled_in_process_settings(settings) -> None:
+    settings.logging.request_logging = False
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
+        assert client.get("/api/v1/hello").status_code == 200
+    contents = (settings.logging.directory / settings.logging.filename).read_text()
+    assert "GET /api/v1/hello" not in contents

@@ -97,7 +97,7 @@ def test_related_requests_share_the_inbound_trace_id(client: TestClient) -> None
 def test_response_traceparent_uses_server_context_instead_of_echoing_parent(
     settings: Settings,
 ) -> None:
-    app = create_app(settings)
+    app = create_app()
 
     @app.get("/api/response-context")
     def observe() -> dict[str, str | int]:
@@ -128,7 +128,8 @@ async def test_overlapping_requests_isolate_trace_context_and_restore_logs(
     settings: Settings,
 ) -> None:
     logging = settings.logging.model_copy(update={"serialize": True})
-    app = create_app(settings.model_copy(update={"logging": logging}))
+    settings.logging = logging
+    app = create_app()
     both_arrived = asyncio.Event()
     arrivals = 0
 
@@ -181,7 +182,7 @@ async def test_overlapping_requests_isolate_trace_context_and_restore_logs(
 
 @pytest.mark.anyio
 async def test_cancelled_request_releases_native_trace_context(settings: Settings) -> None:
-    app = create_app(settings)
+    app = create_app()
     entered = asyncio.Event()
     waiting = asyncio.Event()
 

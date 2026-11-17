@@ -118,8 +118,6 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
   settings.data_dir = join(workDir, 'data');
   settings.backup_directory = join(workDir, 'backups');
   settings.serve_frontend = true;
-  settings.server.port = port;
-  settings.server.host = settings.testing.host;
   settings.logging.directory = join(workDir, 'logs');
   settings.logging.console = false;
   settings.allowed_origins = [baseURL];
@@ -164,6 +162,13 @@ export default createViteSettings(readProjectSettings(${JSON.stringify(configFil
   await symlink(join(projectRoot, 'backend/.venv'), join(serviceBackend, '.venv'), 'dir');
   await cp(join(projectRoot, 'entrypoints'), join(serviceRoot, 'entrypoints'), { recursive: true });
   const serviceEntry = join(serviceRoot, 'entrypoints/service.sh');
+  const serviceScript = (await readFile(serviceEntry, 'utf8'))
+    .replace(
+      /^server_host=.*$/m,
+      () => `server_host='${settings.testing.host.replaceAll("'", "'\\''")}'`,
+    )
+    .replace(/^server_port=[0-9]+$/m, `server_port=${port}`);
+  await writeFile(serviceEntry, serviceScript);
   const serviceCommand = `sh '${serviceEntry.replaceAll("'", "'\\''")}' run --config '${configFile.replaceAll("'", "'\\''")}'`;
   await writeFile(
     generatedConfig,
@@ -184,7 +189,7 @@ export default {
     reuseExistingServer: false,
     timeout: runtime.testing.command_timeout_seconds * 1000,
     gracefulShutdown: {
-      // 与前台 Ctrl+C 一致，让 Uvicorn 返回后完成日志排空和 Python 资源清理。
+      // 使用 Uvicorn 原生 Ctrl+C 路径并等待退出，不额外接管最终日志收尾。
       signal: 'SIGINT',
       timeout: runtime.testing.termination_grace_seconds * 1000,
     },

@@ -5,6 +5,7 @@
 ## 历史与执行边界
 
 - Alembic 环境、版本脚本、操作入口和开发工具集中于此。`operations.py` 管理配置、head 和显式升级，`development.py` 管理临时库重放、生成与检查，`env.py` 通过 AsyncConnection.run_sync 桥接 Alembic DDL；不增加独立同步运行时引擎。
+- 工具从 config.settings 读取所选配置，不接收 Settings 参数或生成临时 Settings。migration_config() 将实际 database_path 写入 Alembic attributes，在线 env.py 要求有效的绝对 Path，缺失时报错，不回退应用数据库。db-check/db-revision 只传递独占临时库路径，全程不重新绑定或修改 config.settings；引擎保留路径保护并只创建目标父目录。在线升级通过维护 CLI 或 migration_config() 构造的上下文执行，不直接从 env.py 选择默认配置。
 - 持久化模型变更与迁移一同交付；模型模块必须经 `app/models/__init__.py` 导入，保证 Base.metadata 完整。缺失导入可能被误判为删表。
 - 已交付并执行过的 revision 不改写，修正使用新 revision。`0001_baseline` 仅建立版本记录、不建业务表；检查 `down_revision` 与唯一 head，不用 stamp 掩盖分叉或版本不符。
 - 迁移只通过 Alembic 连接处理数据库；数据迁移使用 revision 内定义的 SQL/表结构，不导入会演进的应用 ORM 或业务服务，不访问外部服务及其他运行路径。临时库隔离不等于 Python 脚本沙箱。

@@ -57,7 +57,9 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert "sh entrypoints/service.sh run" in result.stdout
     settings = exported_settings(target)
     assert settings["application"]["title"] == "ledger-app"
-    assert settings["server"]["port"] == 18123
+    assert "server_port=18123" in (target / "entrypoints/service.sh").read_text()
+    assert not (target / ".env").exists()
+    assert not (target / ".env.example").exists()
     assert settings["vite"]["port"] == 5182
     assert settings["vite"]["proxy_target"] == "http://127.0.0.1:18123"
     assert "http://127.0.0.1:5182" in settings["allowed_origins"]
@@ -82,6 +84,8 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert (target / "backend/migrations/development.py").is_file()
     assert (target / "backend/migrations/operations.py").is_file()
     assert (target / "backend/app/application.py").is_file()
+    assert (target / "backend/app/telemetry/adapter.py").is_file()
+    assert (target / "backend/app/utils/lazy_proxy.py").is_file()
     assert not (target / "backend/app/api.py").exists()
     assert (target / "backend/app/infra/__init__.py").is_file()
     assert (target / "backend/app/infra/database.py").is_file()
@@ -99,24 +103,26 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert not (target / "backend/app/main.py").exists()
     assert (target / "scripts/create_project.py").is_file()
     assert (target / "entrypoints/service.sh").is_file()
+    assert sorted(path.name for path in (target / "entrypoints").iterdir()) == ["service.sh"]
+    assert (target / "backend/entrypoints/api.py").is_file()
     assert (target / "backend/entrypoints/__init__.py").is_file()
-    assert (target / "backend/entrypoints/service.py").is_file()
-    assert (target / "backend/entrypoints/service_control.py").is_file()
+    assert not (target / "backend/entrypoints/service.py").exists()
+    assert not (target / "backend/entrypoints/service_control.py").exists()
     assert (target / "backend/entrypoints/cli.py").is_file()
     assert not (target / "backend/app/cli.py").exists()
     assert not (target / "entrypoints/__init__.py").exists()
     assert not (target / "backend/entrypoints/service.sh").exists()
     assert not (target / "backend/tools").exists()
-    for module in ("entrypoints.service", "entrypoints.cli"):
-        help_result = subprocess.run(
-            [sys.executable, "-m", module, "--help"],
-            cwd=target / "backend",
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert help_result.returncode == 0, help_result.stdout + help_result.stderr
-        assert "--config" in help_result.stdout
+    help_result = subprocess.run(
+        [sys.executable, "-m", "entrypoints.cli", "--help"],
+        cwd=target / "backend",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert help_result.returncode == 0, help_result.stdout + help_result.stderr
+    assert "--config" in help_result.stdout
+    assert "export-service-settings" in help_result.stdout
     assert not (target / ".data").exists()
     assert not (target / "logs").exists()
     assert not (target / "backend/app/scaffold.py").exists()
@@ -400,8 +406,8 @@ def test_creator_rejects_invalid_template_settings_before_copying(tmp_path: Path
         arguments(template, "template-app", "18123"),
     )
     assert result.returncode == 0, result.stderr
-    config_path = template / "configs/app.toml"
-    config_path.write_text(config_path.read_text().replace("workers = 1", "workers = 2"))
+    config_path = template / "entrypoints/service.sh"
+    config_path.write_text(config_path.read_text().replace("server_port=18123", "server_port=0"))
     target = tmp_path / "invalid-config"
     result = run_creator(
         template / "scripts/create-project.sh",
@@ -409,7 +415,7 @@ def test_creator_rejects_invalid_template_settings_before_copying(tmp_path: Path
         arguments(target, "sample-app", "18124"),
     )
     assert result.returncode == 1
-    assert "server.workers must be 1" in result.stderr
+    assert "server_port" in result.stderr
     assert not target.exists()
 
 
@@ -431,9 +437,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "/backend/app/infra/frontend.py",
         "/backend/app/infra/logging.py",
         "/backend/app/infra/middleware.py",
-        "/backend/entrypoints/service.py",
-        "/backend/entrypoints/service_control.py",
         "/entrypoints/service.sh",
+        "/backend/entrypoints/api.py",
         "/backend/entrypoints/cli.py",
         "/frontend/src/App.tsx",
     )
@@ -457,9 +462,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/frontend.py",
         "backend/app/infra/logging.py",
         "backend/app/infra/middleware.py",
-        "backend/entrypoints/service.py",
-        "backend/entrypoints/service_control.py",
         "entrypoints/service.sh",
+        "backend/entrypoints/api.py",
         "backend/entrypoints/cli.py",
         "frontend/src/App.tsx",
     ):
@@ -475,9 +479,8 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/app/infra/frontend.py",
         "backend/app/infra/logging.py",
         "backend/app/infra/middleware.py",
-        "backend/entrypoints/service.py",
-        "backend/entrypoints/service_control.py",
         "entrypoints/service.sh",
+        "backend/entrypoints/api.py",
         "backend/entrypoints/cli.py",
         "frontend/src/App.tsx",
     ):
@@ -491,9 +494,11 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         ".prettierignore",
         "backend/app/infra/logging.py",
         "backend/entrypoints/__init__.py",
-        "backend/entrypoints/service.py",
-        "backend/entrypoints/service_control.py",
+        "backend/app/telemetry/adapter.py",
+        "backend/app/utils/lazy_proxy.py",
+        "backend/entrypoints/cli.py",
         "entrypoints/service.sh",
+        "backend/entrypoints/api.py",
     ],
 )
 def test_creator_rejects_missing_required_source_without_changing_template_data(
@@ -526,8 +531,10 @@ def test_creator_rejects_missing_required_source_without_changing_template_data(
     assert not (template / missing_file).exists()
 
 
+@pytest.mark.parametrize("record_present", [False, True])
 def test_creator_always_excludes_project_runtime_and_restores_its_ignore_rule(
     tmp_path: Path,
+    record_present: bool,
 ) -> None:
     template = tmp_path / "template"
     created = run_creator(
@@ -543,7 +550,10 @@ def test_creator_always_excludes_project_runtime_and_restores_its_ignore_rule(
     )
     private = template / ".run/instance.json"
     private.parent.mkdir()
-    private.write_text("private instance record")
+    if record_present:
+        private.write_text(json.dumps({"format": 3, "pid": 1, "started_at": "stale"}))
+    for name in ("control.lock", "console.log", "run.lock"):
+        (private.parent / name).write_text("private runtime artifact")
     target = tmp_path / "copy"
     result = run_creator(
         template / "scripts/create-project.sh",
@@ -553,7 +563,8 @@ def test_creator_always_excludes_project_runtime_and_restores_its_ignore_rule(
     assert result.returncode == 0, result.stdout + result.stderr
     assert not (target / ".run").exists()
     assert "/.run/" in (target / ".gitignore").read_text().splitlines()
-    assert private.read_text() == "private instance record"
+    assert private.exists() is record_present
+    assert (private.parent / "control.lock").read_text() == "private runtime artifact"
 
 
 def test_git_ignores_private_files_and_runtime_artifacts(tmp_path: Path) -> None:
@@ -564,7 +575,7 @@ def test_git_ignores_private_files_and_runtime_artifacts(tmp_path: Path) -> None
         ".secrets.production",
         ".run/instance.json",
         ".run/instance.json.pending",
-        ".run/run.lock",
+        ".run/run.lock",  # 旧版本产物仍应忽略，不表示实现继续使用它。
         ".run/control.lock",
         ".run/console.log",
         "custom/app.sqlite3-wal",
@@ -650,10 +661,12 @@ def test_creator_excludes_obsolete_shell_even_when_template_contains_it(tmp_path
     assert result.returncode == 0, result.stderr
     assert not (target / "backend/entrypoints/service.sh").exists()
     assert (target / "entrypoints/service.sh").is_file()
+    assert sorted(path.name for path in (target / "entrypoints").iterdir()) == ["service.sh"]
+    assert (target / "backend/entrypoints/api.py").is_file()
     assert legacy.read_text() == "#!/bin/sh\nexit 0\n"
 
 
-@pytest.mark.parametrize("extra", ["__init__.py", "extra.py", "extra.sh", "nested"])
+@pytest.mark.parametrize("extra", ["__init__.py", "extra.py", "extra.sh", "run_api.sh", "nested"])
 def test_creator_rejects_unsupported_root_entrypoint_content(tmp_path: Path, extra: str) -> None:
     template = tmp_path / "template"
     result = run_creator(

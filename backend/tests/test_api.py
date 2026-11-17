@@ -21,7 +21,7 @@ def test_hello(client: TestClient) -> None:
 
 
 def test_hello_service_is_reused_across_requests(settings: Settings) -> None:
-    app = create_app(settings)
+    app = create_app()
     observed_services: list[HelloService] = []
 
     @app.get("/api/hello-instance")
@@ -62,7 +62,7 @@ def test_method_not_allowed_preserves_allow_header(client: TestClient) -> None:
 def test_http_error_preserves_protocol_headers_without_overriding_safety_headers(
     settings: Settings, status: int, name: str, value: str
 ) -> None:
-    app = create_app(settings)
+    app = create_app()
 
     @app.get("/api/protocol-error")
     def fail() -> None:
@@ -133,13 +133,13 @@ def test_vite_origin_is_allowed(client: TestClient, settings: Settings) -> None:
 
 
 def test_same_origin_is_allowed_on_custom_port(settings: Settings) -> None:
-    with TestClient(create_app(settings), base_url="http://127.0.0.1:12345") as client:
+    with TestClient(create_app(), base_url="http://127.0.0.1:12345") as client:
         response = client.get("/api/v1/hello", headers={"origin": "http://127.0.0.1:12345"})
     assert response.status_code == 200
 
 
 def test_application_and_validation_errors(settings: Settings) -> None:
-    app = create_app(settings)
+    app = create_app()
 
     @app.get("/api/validation")
     def validate(number: int = Query(ge=1)) -> int:
@@ -170,7 +170,7 @@ def test_unexpected_error_is_safe(settings: Settings, traceparent: str | None) -
             observed_span_ids.append(format_span_id(get_current_span().get_span_context().span_id))
             raise RuntimeError("private implementation detail")
 
-    app = create_app(settings)
+    app = create_app()
     app.dependency_overrides[new_hello_service] = lambda: FailingHelloService()
     with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
         response = client.get(

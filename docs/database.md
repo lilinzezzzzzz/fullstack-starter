@@ -16,7 +16,7 @@ uv run --directory backend python -c 'import sqlite3; print(sqlite3.sqlite_versi
 
 ## 数据库与备份
 
-随附配置的数据库位于项目根目录的 `.data/app.sqlite3`，备份目录为 `.data/backups/`；连接开启 WAL、外键、保守持久化设置和有限锁等待。初始迁移只有 `alembic_version`，没有业务表。`.data/` 是运行数据目录，保持 Git 忽略。服务实例记录和进程运行锁位于固定 `.run/`；数据库维护仍使用数据库旁的 `.data/app.sqlite3.lock`，两类锁职责不同，操作入口见 [README 的服务控制](../README.md#服务控制)。
+随附配置的数据库位于项目根目录的 `.data/app.sqlite3`，备份目录为 `.data/backups/`；连接开启 WAL、外键、保守持久化设置和有限锁等待。初始迁移只有 `alembic_version`，没有业务表。`.data/` 是运行数据目录，保持 Git 忽略。服务管理不加锁，固定 .run 只保存记录与控制台输出，运维负责避免并发启停；数据库旁的 `.data/app.sqlite3.lock` 仍覆盖服务使用数据库的完整周期，机制保持不变。数据库锁不替代项目级实例发现，操作入口见 [README 的服务控制](../README.md#服务控制)。
 
 需要升级前快照时，在修改迁移历史或切换到含新迁移的代码之前，用与当前库版本匹配的代码停服并执行备份；新建空库跳过备份。迁移审查与验证完成后，再显式升级并启动。`db-upgrade` 与应用 lifespan 持有同一个数据库锁，服务运行时会拒绝迁移。执行维护前，直接执行 `sh entrypoints/service.sh stop` 停止当前实例，或在前台服务终端按 Ctrl+C，确认服务清理完成及其他数据库使用者也已停止；文件锁仅约束使用同一锁机制的本机进程。
 
@@ -122,15 +122,28 @@ uv run --directory backend pytest tests/test_migrations.py tests/test_database.p
 
 ## 异步数据库调用约定
 
-数据库使用 `sqlite+aiosqlite` 和 `AsyncEngine`。应用生命周期中创建 `async_sessionmaker`，每个请求通过异步依赖获得独立的 `AsyncSession`，关闭应用时 `await engine.dispose()`。
+数据库使用 sqlite+aiosqlite 和 AsyncEngine。数据库模块持有初始为空的 Session 工厂引用，lifespan 在数据库版本检查后进入 session_factory_scope(engine)，在该作用域内初始化 async_sessionmaker；每个请求经无参数 get_session() 获得独立 AsyncSession。app.state 不再保存工厂，SessionDep 的业务调用方式不变。
+
+实现保持在 app/infra/database.py 单模块，按实际职责组织，不引入多数据库分支、通用 DAO、审计或软删除层：
+
+| 函数或依赖                     | 职责                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| _resolve_database_path()       | 解析操作目标，临时数据库覆盖仍执行现有路径安全校验                                   |
+| create_database_engine()       | 固定创建 SQLite 异步引擎，装配文件 URI、连接池参数及本次引擎的事件监听，默认禁止建库 |
+| _configure_sqlite_connection() | 每次实际连接时设置外键、有限锁等待、日志与持久性级别，并关闭初始化游标               |
+| _begin_sqlite_transaction()    | 由 SQLAlchemy 显式发出 BEGIN，统一读写、DDL 和 SAVEPOINT 的外层事务                  |
+| session_factory_scope(engine)  | 发布模块中的请求会话工厂，在正常退出、异常或取消时清除，不关闭传入引擎               |
+| get_session() / SessionDep     | 从模块持有的工厂创建请求独占 Session，无 Request 参数，退出时关闭，不隐式提交        |
+
+连接监听只注册在 create_database_engine() 返回的具体引擎上，不在模块导入时注册全局监听或打开连接。Session 工厂也只在 lifespan 进入作用域时创建；未初始化或已清除时，请求依赖明确报错，不隐式初始化。重复进入作用域会报错且保留原工厂，退出后可供下一次独立生命周期重新初始化。lifespan 退出时先清除工厂引用，再 await engine.dispose()，随后释放数据库维护锁；provider 和日志清理仍在其后。CLI、备份和迁移使用各自的引擎或连接，不依赖该请求工厂。正常连接的 mode=rw 在首次连接及重连时都拒绝创建缺失数据库。
 
 含数据库 I/O 的 Router、Service 和 DAO 使用 `async def`，通过 `await session.execute()`、`await session.flush()` 等访问数据库。写入事务由 Service 使用 `async with session.begin()` 管理，成功提交、失败回滚。纯计算的 Hello Service 可以继续使用普通函数。
 
-不要跨并发任务共享 AsyncSession，也不要将未加载的 ORM 关系交给响应序列化触发隐式 I/O。SQLite 连接使用 SQLAlchemy 官方事件方式显式发出 BEGIN，保留外键、WAL 和事务完整性。
+不要跨并发任务共享 AsyncSession，也不要将未加载的 ORM 关系交给响应序列化触发隐式 I/O。SQLite 连接使用 SQLAlchemy 事件方式显式发出 BEGIN，保留外键、WAL 和事务完整性；DDL 可以随外层事务回滚，释放 SAVEPOINT 不提交外层事务。请求依赖关闭未提交的 Session 时回滚，事务成功提交仍由业务边界显式负责。
 
-Alembic 的命令入口仍是维护 CLI：`migrations/operations.py` 负责配置、版本 head 与显式升级，迁移环境创建异步引擎，通过 `AsyncConnection.run_sync()` 将 Alembic 的同步 DDL API 桥接到异步驱动；不要在应用请求内自动升级数据库。同步测试准备可以调用 `migrations.operations.upgrade_database()`，异步测试通过线程边界调用该同步维护入口。需要验证特定旧版本时，在独占临时库使用同模块的 `migration_config()` 构造配置，再显式调用 Alembic 的目标 revision 升级。
+Alembic 的命令入口仍是维护 CLI：所有子命令先校验并绑定 --config 所选配置，数据库引擎、备份和迁移工具执行时统一读取 config.settings。migrations/operations.py 管理版本 head 与显式升级；env.py 从 Alembic attributes 取得明确的绝对 database_path，再创建异步引擎，通过 AsyncConnection.run_sync 桥接 DDL，缺失路径时报错而不回退应用数据库。不要在请求内自动升级数据库。测试准备先绑定临时配置，再调用无参数 upgrade_database()；异步测试在线程边界调用。验证特定旧版本时使用 migration_config(database_path=temporary_database)，再显式调用 Alembic 的目标 revision。只查看 heads/history 的命令不受在线目标要求影响。
 
-备份实现在 `backend/app/maintenance/backup.py`，使用 `DatabaseBackup` 类接收配置依赖并调用 aiosqlite 的异步 Backup API；CLI 负责参数、对象组装和事件循环。取消时等待已经提交的复制完成再关闭目标连接、删除未返回的快照，并继续传播取消，不重新发起复制。
+备份实现在 backend/app/maintenance/backup.py，无参数 DatabaseBackup 在执行时读取 config.settings 并调用 aiosqlite 的异步 Backup API；CLI 校验参数并绑定配置后，直接实例化 DatabaseBackup 或 DatabaseMigrations，不保留只返回实例的维护工厂。CLI 仍负责备份的事件循环，取消时等待已经提交的复制完成，再关闭目标连接、删除未返回的快照并继续传播取消，不重新发起复制。
 
 `database.synchronous` 是 SQLite 的持久化级别，与 SQLAlchemy 的同步/异步调用方式无关。异步驱动使用相同的 SQLite 文件格式，不需要另建数据库或切换迁移版本。
 

@@ -3,7 +3,7 @@ import sys
 
 from loguru import logger
 
-from app.config import LoggingSettings
+from app.config import settings
 
 
 class InterceptHandler(std_logging.Handler):
@@ -17,29 +17,30 @@ class InterceptHandler(std_logging.Handler):
         logger.opt(exception=record.exc_info).log(level, record.getMessage())
 
 
-def configure_logging(settings: LoggingSettings) -> None:
-    settings.directory.mkdir(parents=True, exist_ok=True)
+def configure_logging() -> None:
+    logging_settings = settings.logging
+    logging_settings.directory.mkdir(parents=True, exist_ok=True)
     logger.remove()
     logger.configure(extra={"trace_id": "-"})
     options = {
-        "level": settings.level,
-        "format": settings.format,
-        "backtrace": settings.backtrace,
-        "diagnose": settings.diagnose,
-        "enqueue": settings.enqueue,
-        "colorize": settings.colorize,
-        "serialize": settings.serialize,
-        "catch": settings.catch,
+        "level": logging_settings.level,
+        "format": logging_settings.format,
+        "backtrace": logging_settings.backtrace,
+        "diagnose": logging_settings.diagnose,
+        "enqueue": logging_settings.enqueue,
+        "colorize": logging_settings.colorize,
+        "serialize": logging_settings.serialize,
+        "catch": logging_settings.catch,
     }
     logger.add(
-        settings.directory / settings.filename,
-        rotation=settings.rotation,
-        retention=settings.retention,
-        compression=settings.compression_format,
+        logging_settings.directory / logging_settings.filename,
+        rotation=logging_settings.rotation,
+        retention=logging_settings.retention,
+        compression=logging_settings.compression_format,
         encoding="utf-8",
         **options,
     )
-    if settings.console:
+    if logging_settings.console:
         logger.add(sys.stderr, **options)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         standard_logger = std_logging.getLogger(name)
