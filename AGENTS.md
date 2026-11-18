@@ -29,7 +29,7 @@
 
 - 服务唯一入口为 `sh entrypoints/service.sh run|start|status|stop|restart`，不提供独立启动脚本或隐式启动命令。前后台共用脚本内的 Uvicorn CLI 启动逻辑，导入 `entrypoints.api:app`。服务管理不加锁，由运维保证命令串行和实例排他使用；固定 .run 只保存 instance.json、console.log 及原子更新期间的 pending 文件。数据与日志仍取 TOML，数据库维护锁不变。根 entrypoints 只放 service.sh，Python 实现仍在 backend/entrypoints。
 - 服务和显式升级共用数据库专属文件锁，运行期间不删除锁文件。日常数据库升级、恢复和切换前先停服，并遵守用户授权边界；文件锁不代表其他数据库使用者已经停止。
-- 服务验证使用独立临时项目，重写临时 Shell 的 host/port 等常量，配套独占 TOML、SQLite、日志、构建及自有进程，不操作日常 .run、.data、日志、备份、服务或前端产物，也不读取或改动私有 .env。只清理本次资源，保留取消传播和连接关闭。
+- 服务验证使用独立临时项目，只重写临时 Shell 的 host 和 port 常量，配套独占 TOML、SQLite、日志、构建及自有进程，不操作日常 .run、.data、日志、备份、服务或前端产物，也不读取或改动私有 .env。只清理本次资源，保留取消传播和连接关闭。
 - 保持数据库、WAL/SHM、服务实例凭据与状态、锁、备份、日志、私有配置、依赖、缓存和构建输出不进入 Git；自定义运行路径时同步检查 `.gitignore` 与源码路径保护。
 
 ## 工具与验证
@@ -46,7 +46,7 @@
 ## 服务管理共同契约
 
 - service.sh 直接实现 run、start、status、stop、restart 五个命令，负责实例记录、PID/启动时间、健康、信号和等待，不委托 Python 控制器。api.py 只保留 create_app 导入和 app = create_app()，日志在 lifespan 初始化；cli.py 的 export-service-settings 导出配置。config.py 用 lazy_proxy 导出固定 settings 属性读取代理，get_settings() 缓存真实实例，bind_settings() 只改变内部绑定，不替换代理。后端统一读取 config.settings，不保存 app.state.settings 或转传 Settings；真实类型和序列化操作使用 getter 或 loader 的真实对象。CLI 严格加载 --config 后绑定，再执行操作；运行期间不重绑，不交错运行不同配置的应用。临时迁移只传 database_path；测试通过绑定接口隔离缓存并在资源关闭后恢复，包括未加载状态。load_settings(path) 独立加载，不读写缓存。删除 service.py 和 service_control.py，不保留服务锁、TCP 通道、凭据或快照。
-- Shell 固定 Uvicorn 的 host=127.0.0.1、port=18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker，并发不限（省略 --limit-concurrency）。host/port/关闭期限在脚本内有单一常量供启动和记录复用，其他值直接作为 CLI 常量；不读取 .env，不提供 --env-file，server_environment.py 已删除。Python 仅导出 TOML 来源、日志和两个等待期限，Shell 检查停止预算大于原生关闭期限。创建器的 --port 修改生成副本的端口常量，隔离测试只修改临时副本。
+- Shell 固定 Uvicorn 的 host=127.0.0.1、port=18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker，并发不限（省略 --limit-concurrency）。host 和 port 在脚本内各有单一常量供启动和记录复用，其他参数直接写在 CLI 中；不读取 .env，不提供 --env-file，server_environment.py 已删除。Python 仅导出 TOML 来源、日志和两个等待期限。Shell 使用实例记录中的停止预算，该预算独立于 Uvicorn 的优雅关闭等待。创建器的 --port 修改生成副本的端口常量，隔离测试只修改临时副本的 host 和 port。
 - 五个命令均不使用服务锁，不传递锁描述符或 --locked 内部参数。后台子进程调用同一脚本的 run 路径；已有匹配实例时返回 0，不读新配置。检查已有实例仅方便串行使用，不提供并发启动保护；运维负责避免并发启停和管理记录丢失。status/stop 不读取配置文件。
 - restart 先预校验所选 TOML，失败保留旧实例；停止成功后启动新实例。默认选择 configs/app.toml，不保证跨进程配置冻结或并发互斥，运维负责串行调用和配置变更。
 - 不创建服务锁，不清理日常旧文件。Shell 在 exec Uvicorn 前记录自身 PID/系统启动时间，exec 后 PID 不变；格式仍为 3，另存配置、URL、日志和停止期限。jq 校验记录，stat 检查 0600/所有者，并拒绝符号链接；pending 原子替换。正常退出可留下记录，stop 在原目标退出后清理匹配记录，不自动接管旧格式。

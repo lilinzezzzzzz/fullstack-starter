@@ -2,10 +2,9 @@
 # 唯一服务入口；运维负责串行执行，不提供并发锁。
 set -eu
 umask 077
-# 固定启动参数；创建器和隔离测试只修改各自副本中的端口常量。
+# 固定启动参数；创建器只改生成副本的端口，隔离测试只改临时副本的监听地址和端口。
 server_host=127.0.0.1
 server_port=18001
-graceful_shutdown_seconds=10
 project_dir=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
 state_dir=$project_dir/.run
 record_file=$state_dir/instance.json
@@ -158,7 +157,6 @@ stop_service() {
 load_configuration() {
     python_executable=$(uv run --no-sync --directory "$project_dir/backend" python -c 'import sys; print(sys.executable)')
     settings=$(cd "$project_dir/backend" && "$python_executable" -m entrypoints.cli --config "$config" export-service-settings)
-    printf '%s' "$settings" | jq -e --argjson grace "$graceful_shutdown_seconds" '.stop_timeout > $grace' >/dev/null || fail 'Stop timeout must exceed the Uvicorn graceful shutdown timeout'
     case "$server_host" in
         0.0.0.0) health_host=127.0.0.1 ;; ::) health_host='[::1]' ;;
         *:*) health_host="[$server_host]" ;; *) health_host=$server_host ;;
@@ -185,7 +183,7 @@ run_server() {
     cd "$project_dir/backend"
     exec "$python_executable" -m uvicorn entrypoints.api:app \
         --host "$server_host" --port "$server_port" --workers 1 \
-        --timeout-graceful-shutdown "$graceful_shutdown_seconds" \
+        --timeout-graceful-shutdown 10 \
         --timeout-keep-alive 5 --backlog 2048 \
         --lifespan on --no-access-log --no-proxy-headers
 }

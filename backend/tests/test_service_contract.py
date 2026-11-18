@@ -39,14 +39,14 @@ def test_configuration_export_has_only_application_configuration(service_project
     assert not (tmp_path / "data").exists()
 
 
-def test_shell_validates_stop_budget_against_fixed_shutdown_timeout(service_project):
+def test_shell_rejects_nonpositive_stop_budget(service_project):
     config = service_project / "configs/app.toml"
     data = read_config(config)
-    data["service"]["stop_timeout_seconds"] = 0.5
+    data["service"]["stop_timeout_seconds"] = 0
     save_config(config, data)
     result = command(service_project, "start")
     assert result.returncode == 1
-    assert "must exceed" in result.stderr
+    assert "stop_timeout_seconds" in result.stderr
     assert not (service_project / ".run/instance.json").exists()
 
 

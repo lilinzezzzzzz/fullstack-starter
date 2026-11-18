@@ -35,7 +35,6 @@ def configure_service(project: Path, **overrides: object) -> Path:
     fields = {
         "host": "server_host",
         "port": "server_port",
-        "graceful_shutdown_seconds": "graceful_shutdown_seconds",
     }
     for field, value in overrides.items():
         script, count = re.subn(
@@ -131,7 +130,7 @@ def isolated_service_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     data["service"].update(startup_timeout_seconds=8.0, stop_timeout_seconds=4.0)
     (project / "configs").mkdir()
     save_config(project / "configs/app.toml", data)
-    configure_service(project, port=unused_port(), graceful_shutdown_seconds=1)
+    configure_service(project, port=unused_port())
     monkeypatch.setattr(app_config, "PROJECT_ROOT", project)
     monkeypatch.setattr(database, "PROJECT_ROOT", project)
     monkeypatch.setitem(globals(), "SERVICE_PROJECT", project)

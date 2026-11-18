@@ -42,7 +42,7 @@ def test_foreground_uses_native_uvicorn_signals_and_releases_application_resourc
     service_project, tmp_path, signum, console, group
 ):
     config = write_config(tmp_path / "configuration with spaces 中文")
-    configure_service(service_project, port=unused_port(), graceful_shutdown_seconds=1)
+    configure_service(service_project, port=unused_port())
     data = read_config(config)
     data["logging"]["console"] = console
     save_config(config, data)
@@ -95,7 +95,7 @@ def test_startup_failures_do_not_change_database_or_other_listener(
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         port = listener.getsockname()[1] if failure == "occupied-port" else unused_port()
-        configure_service(service_project, port=port, graceful_shutdown_seconds=1)
+        configure_service(service_project, port=port)
         if failure != "missing-database":
             app_config.bind_settings(load_settings(config))
             upgrade_database()
@@ -119,7 +119,7 @@ def test_health_must_belong_to_the_registered_listener(service_project, tmp_path
     settings = load_settings(config)
     app_config.bind_settings(settings)
     upgrade_database()
-    configure_service(service_project, port=unused_port(), graceful_shutdown_seconds=1)
+    configure_service(service_project, port=unused_port())
     with foreground_service(config) as (process, output):
         wait_for_service(process, settings, output)
         path = service_project / ".run/instance.json"
@@ -138,7 +138,7 @@ def test_health_must_belong_to_the_registered_listener(service_project, tmp_path
 @pytest.mark.integration
 def test_foreground_run_preserves_uvicorn_startup_failure_exit_code(service_project, tmp_path):
     config = write_config(tmp_path / "native startup failure")
-    configure_service(service_project, port=unused_port(), graceful_shutdown_seconds=1)
+    configure_service(service_project, port=unused_port())
     with foreground_service(config) as (process, output):
         assert process.wait(timeout=10) == 3, output.read_text()
     assert read_instance(service_project) is None

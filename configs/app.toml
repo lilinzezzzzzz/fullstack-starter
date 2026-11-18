@@ -49,7 +49,7 @@ openapi_path = "/openapi.json"
 # 控制台输出为 .run/console.log；应用日志仍使用 [logging]。
 # start 等待 Uvicorn 启动且 /api/health 正常的最长秒数，必须大于 0。
 startup_timeout_seconds = 15.0
-# stop 只等待原生进程退出，不额外排空末尾日志；期限须大于 Shell 中固定的原生关闭期限。
+# Shell 等待目标进程退出的期限，单位为秒，必须大于 0。
 # 超时保留实例信息并报错，不自动 SIGKILL；restart 此时不会启动新进程。
 stop_timeout_seconds = 20.0
 

@@ -132,7 +132,7 @@ sh entrypoints/service.sh run
 
 管理成功为 0，status 已停止 3，参数错误 2，其他错误 1，管理命令中断仍为 130/143。前台 run 透传 Uvicorn 原生退出结果，不再统一转换 SIGINT/SIGTERM；当前锁定版本在服务运行后接收 SIGINT 可返回 0，SIGTERM 按原生信号结束（Shell 中为 143）。lifespan 启动失败仍可返回 3。不注册自定义信号或 atexit 收尾，不额外保证最后几条 Uvicorn 日志排空；lifespan 的应用资源清理保持不变。停止失败或中断不继续重启，查询中断不停止既有实例，后台启动回收只针对本次新建进程。
 
-启停预算仍来自 TOML service 分组，Shell 检查停止预算大于脚本中的固定原生关闭期限；停止现有实例使用记录保存的预算。应用日志仍取 TOML logging，数据库维护锁机制不变，详见[配置约定](docs/configuration.md)和[数据库指南](docs/database.md)。
+Shell 的启停预算取自 TOML 的 service 分组。停止现有实例时使用记录保存的预算，该预算独立于 Uvicorn 的 10 秒优雅关闭等待。应用日志仍取 TOML logging，数据库维护锁机制不变，详见[配置约定](docs/configuration.md)和[数据库指南](docs/database.md)。
 
 ## 可选 Vite 开发
 
