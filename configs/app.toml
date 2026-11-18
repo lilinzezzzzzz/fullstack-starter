@@ -153,40 +153,6 @@ strict_port = true
 # 是否将代理请求的 Host 改为后端目标的主机。
 change_origin = true
 
-[client]
-# 只有本节与 application 的标题、版本进入浏览器构建产物，修改后需重新构建。
-# theme_* 用于 Semi Design 组件，具体范围见 docs/configuration.md。
-# 单次 API 请求超时，秒，必须大于 0。
-request_timeout_seconds = 10.0
-# 查询保持新鲜的秒数；0 表示立即过期。
-query_stale_seconds = 30.0
-# 无订阅查询的缓存保留秒数；0 不保留闲置缓存。
-query_cache_seconds = 300.0
-# 查询失败后的最大重试次数；0 不重试。
-query_retry_attempts = 1
-# 查询重试间隔，秒；0 不额外等待。
-query_retry_delay_seconds = 1.0
-# 允许查询重试的最低 HTTP 错误状态码，范围 400–599。
-retry_min_status = 500
-# 是否允许对网络错误或请求超时进行查询重试。
-retry_network_errors = true
-# 页面重新获得焦点时，是否重新请求过期查询。
-refetch_on_window_focus = false
-# 查询组件挂载时，是否重新请求过期查询。
-refetch_on_mount = true
-# 网络恢复连接时，是否重新请求过期查询。
-refetch_on_reconnect = true
-# 固定禁用写操作重试，避免未建立幂等契约时重复写入。
-mutation_retry_attempts = 0
-# Semi Design 主色，六位十六进制，例如 #14675b。
-theme_primary_color = "#14675b"
-# Semi Design 小圆角，非负像素值。
-theme_border_radius = 10
-# Hello 页检查按钮与错误提示正文的字号，正像素值。
-theme_font_size = 16
-# Hello 页检查按钮与错误提示正文的字体，非空 CSS font-family 值。
-theme_font_family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-
 [testing]
 # 隔离验证使用的资源与预算，禁止复用日常数据库、日志或前端产物。
 # 本节超时和退出等待期限须大于 0，仅 action_timeout_seconds 允许用 0 禁用单次操作超时。

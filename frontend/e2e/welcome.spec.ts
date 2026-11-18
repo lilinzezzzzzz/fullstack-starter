@@ -28,8 +28,10 @@ test('single FastAPI service serves Hello, assets and client-side navigation', a
 });
 
 test('connection error is explained and retry reconnects to the real API', async ({ page }) => {
-  await page.route('**/api/v1/hello', (route) =>
-    route.fulfill({
+  let failedRequests = 0;
+  await page.route('**/api/v1/hello', (route) => {
+    failedRequests += 1;
+    return route.fulfill({
       status: 503,
       contentType: 'application/json',
       body: JSON.stringify({
@@ -38,11 +40,16 @@ test('connection error is explained and retry reconnects to the real API', async
         details: [],
         trace_id: '4bf92f3577b34da6a3ce929d0e0e4736',
       }),
-    }),
-  );
+    });
+  });
   await page.goto('/');
   await expect(page.getByText('连接检查失败')).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('测试服务暂时不可用');
+  await expect(page.getByText('测试服务暂时不可用', { exact: true })).toHaveCSS(
+    'font-size',
+    '16px',
+  );
+  expect(failedRequests).toBe(2);
   await page.unroute('**/api/v1/hello');
   await page.getByRole('button', { name: '重试连接' }).click();
   await expect(page.getByText('前后端已连通')).toBeVisible();
@@ -81,6 +88,9 @@ test('narrow screen has no horizontal overflow and supports keyboard retry', asy
   await page.keyboard.press('Tab');
   const retry = page.getByRole('button', { name: '重新检查' });
   await expect(retry).toBeFocused();
+  await expect(retry).toHaveCSS('background-color', 'rgb(20, 103, 91)');
+  await expect(retry).toHaveCSS('border-radius', '10px');
+  await expect(retry).toHaveCSS('font-size', '16px');
   const response = page.waitForResponse((value) => value.url().endsWith('/api/v1/hello'));
   await page.keyboard.press('Enter');
   expect((await response).status()).toBe(200);

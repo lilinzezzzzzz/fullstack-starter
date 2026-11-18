@@ -145,13 +145,12 @@ fullstack-starter/
 
 数据库 I/O 使用 `async def` 和 `await`。每个请求或并发任务拥有独立 AsyncSession，写入使用 `async with session.begin()`，禁止共享会话和隐式关系加载。复杂查询出现真实复用需求后再增加 DAO，不预置通用 CRUD、Service 或 Repository 基类。
 
-普通运行时模块顶部直接 from app.config import settings，函数执行时读取属性；CLI 和测试保留加载、getter 和绑定接口，telemetry 轻量入口继续函数内导入。create_app() 先桥接白名单，注入无 SDK 资源适配器，再装配中间件、异常处理、API、OpenAPI 和前端；真实 provider 只在生命周期内创建，不保存到 app.state，API 先于 SPA。
+普通运行时模块顶部直接 from app.config import settings，函数执行时读取属性；CLI 和测试保留加载、getter 和绑定接口，telemetry 轻量入口继续函数内导入。create_app() 先桥接白名单，注入无 SDK 资源适配器，再装配中间件、异常处理、API 和前端；FastAPI 负责 OpenAPI 生成。真实 provider 只在生命周期内创建，不保存到 app.state，API 先于 SPA。
 
 | 函数                                | 职责                                                                               |
 | ----------------------------------- | ---------------------------------------------------------------------------------- |
 | `lifespan(application)`             | 先初始化日志，进入 provider 和 Session 工厂作用域，检查前端/数据库并按顺序关闭资源 |
 | `_register_api_routes(application)` | 创建聚合路由，统一 `/api` 前缀和公共错误 Schema，按顺序注册 health 与 hello        |
-| `_configure_openapi(application)`   | 在该应用的 OpenAPI 中补充公开的 ClientSettings Schema                              |
 | `_mount_frontend(application)`      | 读取是否托管前端，按需挂载 FrontendFiles，位于 API 注册之后                        |
 
 config.py 导出固定的 lazy_proxy 属性读取入口，get_settings() 缓存真实模型，bind_settings() 仅改变内部绑定，不替换公开代理。CLI 严格加载并绑定 --config 所选真实实例后再执行，运行期间不重绑；测试在资源关闭后恢复原缓存，包括未加载状态。导入和 repr 不读取 TOML，真实类型与序列化操作使用 getter 或 loader 返回的对象，详见[配置访问](configuration.md#python-配置访问)。临时迁移仅传数据库路径，不改变配置绑定。Session 工厂与 SDK provider 的生命周期作用域不变，不经 app.state 传递；应用构建和 OpenAPI 导出不创建真实 provider、Session 工厂、数据库连接或日志，也不要求前端产物。关闭顺序仍为清除 Session 工厂、await 引擎释放、解锁、清除并关闭 SDK provider、等待日志。
@@ -172,7 +171,7 @@ maintenance/backup.py 的 DatabaseBackup 执行时读取 settings，异步创建
 
 ## 前端与接口契约
 
-TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取消和错误解析；`useWelcome` 组合 Hello 与健康检查，页面和连接组件呈现加载、失败、成功及重试状态。保持现有 Hello 视觉设计，支持键盘操作和窄屏使用，不增加全局业务状态库。
+TanStack Query 管理服务端状态，`api/client.ts` 负责请求超时、取消和错误解析，策略取自前端 `src/config.ts`。`useWelcome` 组合 Hello 与健康检查，页面和连接组件呈现加载、失败、成功及重试状态，支持键盘操作和窄屏使用。Semi Design 主题值由 CSS 管理，具体范围见[前后端配置流](configuration.md#前后端配置流)。
 
 | Method / 路径                      | 契约                                  |
 | ---------------------------------- | ------------------------------------- |
@@ -197,7 +196,7 @@ app/telemetry/ 的包入口只导出轻量 getter 和作用域，不提前加载
 
 ## 配置、访问与进程边界
 
-Uvicorn 启动参数固定在 service.sh：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker、并发不限，不读取 .env 或环境覆盖。其余参数仍来自 configs/app.toml，通过 --config 另选；所有字段必填，保留严格校验、零值语义和路径保护，见[配置约定](configuration.md)。创建器只修改生成副本的端口常量，隔离测试只修改临时 Shell 的 host 和 port。
+Uvicorn 启动参数固定在 service.sh：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker、并发不限，不读取 .env 或环境覆盖。后端与构建工具使用 configs/app.toml，通过 --config 另选；所有字段必填，保留严格校验、零值语义和路径保护，见[配置约定](configuration.md)。创建器只修改生成副本的端口常量，隔离测试只修改临时 Shell 的 host 和 port。
 
 service.sh 通过 entrypoints.cli 的 export-service-settings 获取 TOML 来源、日志和等待预算，自行计算固定地址、登记实例并 exec Uvicorn CLI。Shell 与 Uvicorn 的 PID/启动时间不变，不 eval 数据；entrypoints/api.py 只保留 create_app 导入和 app = create_app()，不再保留 service.py 或 create_service_app 包装。应用工厂读取 config.settings 构建应用，不初始化日志或登记实例；lifespan 先配置日志，再检查和管理运行资源，请求依赖的资源归属不变。
 

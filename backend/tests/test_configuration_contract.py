@@ -360,7 +360,7 @@ def test_every_configuration_field_is_required(tmp_path: Path) -> None:
         assert any(item["type"] == "missing" for item in error.value.errors()), field_path
 
 
-@pytest.mark.parametrize("field", ["database.pool_size", "client.request_timeout_seconds"])
+@pytest.mark.parametrize("field", ["database.pool_size", "service.startup_timeout_seconds"])
 def test_wrong_types_are_not_coerced_or_defaulted(tmp_path: Path, field: str) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
@@ -382,7 +382,7 @@ def test_legacy_json_is_not_an_implicit_fallback(tmp_path: Path) -> None:
 def test_non_finite_timeout_is_rejected(tmp_path: Path) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
-    data["client"]["request_timeout_seconds"] = float("inf")
+    data["service"]["startup_timeout_seconds"] = float("inf")
     save_config(path, data)
     with pytest.raises(ValidationError):
         load_settings(path)
@@ -391,22 +391,27 @@ def test_non_finite_timeout_is_rejected(tmp_path: Path) -> None:
 def test_zero_and_false_are_explicit_values_not_missing_values(tmp_path: Path) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
-    data["client"].update(
-        query_stale_seconds=0.0,
-        query_cache_seconds=0.0,
-        query_retry_attempts=0,
-        refetch_on_mount=False,
-        retry_network_errors=False,
-    )
+    data["database"]["max_overflow"] = 0
+    data["testing"]["action_timeout_seconds"] = 0.0
     data["logging"]["request_logging"] = False
     save_config(path, data)
     settings = load_settings(path)
-    assert settings.client.query_stale_seconds == 0
-    assert settings.client.query_cache_seconds == 0
-    assert settings.client.query_retry_attempts == 0
-    assert settings.client.refetch_on_mount is False
-    assert settings.client.retry_network_errors is False
+    assert settings.database.max_overflow == 0
+    assert settings.testing.action_timeout_seconds == 0
     assert settings.logging.request_logging is False
+
+
+def test_old_client_section_is_rejected(tmp_path: Path) -> None:
+    path = write_config(tmp_path)
+    data = read_config(path)
+    data["client"] = {"request_timeout_seconds": 10.0}
+    save_config(path, data)
+    with pytest.raises(ValidationError) as error:
+        load_settings(path)
+    assert any(
+        item["loc"] == ("client",) and item["type"] == "extra_forbidden"
+        for item in error.value.errors()
+    )
 
 
 @pytest.mark.parametrize(
@@ -448,8 +453,7 @@ def test_documentation_and_metadata_are_driven_by_file(
     upgrade_database()
     app = create_app()
     assert app.openapi()["info"] == {"title": "configured-project", "version": "2.3.4"}
-    schema = app.openapi()["components"]["schemas"]["ClientSettings"]
-    assert set(schema["required"]) == set(schema["properties"])
+    assert "ClientSettings" not in app.openapi()["components"]["schemas"]
     with TestClient(app, base_url="http://127.0.0.1") as client:
         for url, enabled in (
             (settings.application.docs_path, docs_enabled),

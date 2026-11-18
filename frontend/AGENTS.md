@@ -7,7 +7,7 @@
 - 沿用 React、TypeScript、React Router、TanStack Query、Semi Design 与 CSS Modules。新增通用 UI 优先复用 `@douyinfe/semi-ui` 组件，图标使用 `@douyinfe/semi-icons`，页面布局与局部样式使用 CSS Modules。页面放 `src/pages/`，可复用组件放 `src/components/`，HTTP 边界放 `src/api/`，查询编排放 `src/hooks/`；局部状态就地维护。
 - 在 `src/main.tsx` 首先导入 Semi 的 React 19 适配器，并加载基础样式。UI 组件使用 `@douyinfe/semi-ui/lib/es/<组件>` 的包导出，减少构建引入的模块。中文 locale 由 `src/App.tsx` 的 `ConfigProvider` 提供，组件主题的范围见[配置约定](../docs/configuration.md#前后端配置流)。
 - Hello 页同时验证真实 Hello API 与数据库健康检查，保留加载、成功、错误与重试状态；不通过静态假数据掩盖连接失败。
-- 请求复用 `src/api/client.ts`，保留 AbortSignal 传播、超时与调用方取消的区分、定时器和监听器清理。TanStack Query 的 signal 传至实际请求；重试与缓存取显式客户端配置，写请求重试次数固定约束为 0。
+- 请求复用 `src/api/client.ts`，保留 AbortSignal 传播、超时与调用方取消的区分、定时器和监听器清理。TanStack Query 的 signal 传至实际请求。请求超时、查询缓存、刷新和重试策略维护在 `src/config.ts`，写请求重试固定为 0。
 - 错误从标准错误体读取 `message`、`code`、`trace_id`；不依赖 `X-Trace-ID`。编译期类型断言不能替代运行时错误处理。
 - 保留语义化交互、键盘焦点、窄屏布局与无横向溢出；修改状态呈现或交互后更新相关页面测试。
 
@@ -15,7 +15,7 @@
 
 - Node 版本遵循根 `.node-version`，pnpm 版本遵循 `package.json` 的 packageManager/engines；保留 `pnpm-lock.yaml`，不用 npm/yarn 替换。Vite 开发/构建、API 类型生成/检查和 E2E 需要已安装的后端环境；Prettier、ESLint 与 TypeScript 静态检查使用前端工具链。
 - `scripts/project-config.mjs` 调用 Python CLI 完整校验 TOML；Vite、Playwright 与类型工具共用该入口。不能增加 `VITE_*`、`import.meta.env` 或独立 TOML 解析作为应用参数来源。
-- 浏览器只注入 `client` 和应用标题/版本，不注入完整配置、服务端路径或访问允许列表。修改公开配置要同步后端 Schema、构建注入、生成类型与配置文档。
+- `scripts/vite-settings.mjs` 从已校验的 TOML 只注入应用标题和版本；前端策略与样式由前端源码管理。
 - `src/types/api.generated.d.ts` 通过 `pnpm --dir frontend api:types` 生成；禁止手工编辑或用 Prettier 改写。`api:types:check` 发现过期应失败且不改写文件。
 - 构建输出路径与清空限制遵守 Python 路径校验；不绕过符号链接和源码保护。验证构建使用本次临时 TOML 与输出目录，不重建或清空日常 `frontend/dist/`。
 

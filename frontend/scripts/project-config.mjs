@@ -24,14 +24,3 @@ export function readProjectSettings(path) {
   );
   return JSON.parse(output);
 }
-
-export function browserDefinitions(settings) {
-  // 不得向浏览器暴露完整服务端配置或其文件系统路径。
-  return {
-    __CLIENT_CONFIG__: JSON.stringify(settings.client),
-    __APPLICATION_INFO__: JSON.stringify({
-      title: settings.application.title,
-      version: settings.application.version,
-    }),
-  };
-}

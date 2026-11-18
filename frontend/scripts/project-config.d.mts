@@ -5,7 +5,6 @@ export function readProjectSettings(path: string): {
   frontend_clean_output: boolean;
   allowed_hosts: string[];
   application: { title: string; version: string };
-  client: Record<string, unknown>;
   vite: {
     host: string;
     port: number;
@@ -36,6 +35,3 @@ export function readProjectSettings(path: string): {
     reporter: 'list' | 'dot' | 'line';
   };
 };
-export function browserDefinitions(
-  settings: ReturnType<typeof readProjectSettings>,
-): Record<string, string>;

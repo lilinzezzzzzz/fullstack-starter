@@ -12,14 +12,14 @@
 }
 /* Semi declares its default tokens and font on body. */
 :root > body {
-  --semi-color-primary: var(--app-component-primary);
+  --semi-color-primary: #14675b;
   --semi-color-primary-hover: color-mix(in srgb, var(--semi-color-primary) 88%, black);
   --semi-color-primary-active: color-mix(in srgb, var(--semi-color-primary) 76%, black);
   --semi-color-primary-disabled: color-mix(in srgb, var(--semi-color-primary) 32%, white);
   --semi-color-primary-light-default: color-mix(in srgb, var(--semi-color-primary) 8%, transparent);
   --semi-color-primary-light-hover: color-mix(in srgb, var(--semi-color-primary) 16%, transparent);
   --semi-color-primary-light-active: color-mix(in srgb, var(--semi-color-primary) 24%, transparent);
-  --semi-border-radius-small: var(--app-component-radius);
+  --semi-border-radius-small: 10px;
 
   font-family: inherit;
   margin: 0;

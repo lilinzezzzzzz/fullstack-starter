@@ -58,11 +58,11 @@ sh scripts/create-project.sh \
 
 ## 配置文件
 
-Uvicorn 参数固定在 [service.sh](entrypoints/service.sh)：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker，并发不限。不读取 .env，也没有 --env-file 参数。应用配置仍只读取 [configs/app.toml](configs/app.toml)，所有字段必填，拒绝未知项及隐式补值，相对路径从项目根解析。
+Uvicorn 参数固定在 [service.sh](entrypoints/service.sh)：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker，并发不限。不读取 .env，也没有 --env-file 参数。后端和构建工具共用 [configs/app.toml](configs/app.toml)，所有字段必填，拒绝未知项及隐式补值，相对路径从项目根解析。
 
 字段用途、单位、可选值和零值含义见 TOML 注释，定义与校验在 [backend/app/config.py](backend/app/config.py)。固定日志类属性和派生属性不属于 TOML 字段，不能通过添加同名键修改。
 
-后端、Vite 与测试工具共用 Python 校验器。浏览器只接收 `client` 和应用标题/版本，前端配置变更需重新构建。配置来源、路径保护与 telemetry 环境隔离详见[配置约定](docs/configuration.md)。
+后端、Vite 与测试工具共用 Python 校验器。TOML 只向浏览器提供应用标题和版本。请求与查询策略在 [frontend/src/config.ts](frontend/src/config.ts)，组件主题由前端 CSS 管理。生产产物需重新构建才能应用前端改动，详细边界见[配置约定](docs/configuration.md#前后端配置流)。
 
 普通运行时模块直接 from app.config import settings，在函数中读取配置；固定代理提前导入也不读取 TOML，telemetry 轻量入口仍在函数内延迟导入。CLI 和测试通过加载、getter 和绑定接口选择真实实例，不替换代理；运行期间配置不变。访问约定与导入边界见[配置说明](docs/configuration.md#python-配置访问)。
 

@@ -1,11 +1,10 @@
 from collections.abc import AsyncGenerator
 from contextlib import ExitStack, asynccontextmanager
-from typing import Any
 
 from fastapi import APIRouter, FastAPI
 from loguru import logger
 
-from app.config import ClientSettings, settings
+from app.config import settings
 from app.infra import errors
 from app.infra.database import (
     check_database_revision,
@@ -45,7 +44,6 @@ def create_app() -> FastAPI:
     application.add_middleware(RequestMiddleware)
     errors.register_error_handlers(application)
     _register_api_routes(application)
-    _configure_openapi(application)
     _mount_frontend(application)
     return application
 
@@ -86,18 +84,6 @@ def _register_api_routes(application: FastAPI) -> None:
     api_router.include_router(health.router)
     api_router.include_router(hello.router)
     application.include_router(api_router)
-
-
-def _configure_openapi(application: FastAPI) -> None:
-    original_openapi = application.openapi
-
-    def openapi_with_client_schema() -> dict[str, Any]:
-        schema = original_openapi()
-        # 公开的构建时配置复用生成的类型，不向浏览器暴露服务端配置值。
-        schema["components"]["schemas"]["ClientSettings"] = ClientSettings.model_json_schema()
-        return schema
-
-    application.openapi = openapi_with_client_schema
 
 
 def _mount_frontend(application: FastAPI) -> None:

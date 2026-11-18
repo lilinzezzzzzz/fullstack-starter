@@ -169,25 +169,6 @@ class ViteSettings(ConfigSection):
     change_origin: bool  # 是否将代理请求的 Host 改为后端目标的主机。
 
 
-class ClientSettings(ConfigSection):
-    # 本分组注入浏览器构建产物，修改后需要重新构建前端。
-    request_timeout_seconds: float = Field(gt=0)  # 单次 API 请求超时，秒。
-    query_stale_seconds: float = Field(ge=0)  # 查询保持新鲜的秒数；0 表示立即过期。
-    query_cache_seconds: float = Field(ge=0)  # 无订阅查询的缓存保留秒数；0 不保留闲置缓存。
-    query_retry_attempts: int = Field(ge=0)  # 查询失败后的最大重试次数；0 不重试。
-    query_retry_delay_seconds: float = Field(ge=0)  # 查询重试间隔，秒；0 不额外等待。
-    retry_min_status: int = Field(ge=400, le=599)  # 允许查询重试的最低 HTTP 错误状态码。
-    retry_network_errors: bool  # 是否允许对网络错误或请求超时进行查询重试。
-    refetch_on_window_focus: bool  # 页面重新获得焦点时，是否重新请求过期查询。
-    refetch_on_mount: bool  # 查询组件挂载时，是否重新请求过期查询。
-    refetch_on_reconnect: bool  # 网络恢复连接时，是否重新请求过期查询。
-    mutation_retry_attempts: Literal[0]  # 固定禁用写操作重试，避免未建立幂等契约时重复写入。
-    theme_primary_color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")  # Semi Design 六位十六进制主色。
-    theme_border_radius: int = Field(ge=0)  # Semi Design 小圆角，像素。
-    theme_font_size: int = Field(gt=0)  # Hello 页检查按钮和错误提示字号，像素。
-    theme_font_family: str = Field(min_length=1)  # Hello 页检查按钮和错误提示字体。
-
-
 class TestingSettings(ConfigSection):
     temporary_directory: ProjectPath  # E2E/迁移验证创建独占子目录的父位置，不复用日常产物。
     host: str  # 隔离 E2E 服务的监听及访问地址。
@@ -229,7 +210,6 @@ class Settings(ConfigSection):
     logging: LoggingSettings  # Loguru 文件、控制台及请求日志参数。
     telemetry: TelemetrySettings  # 仅维护 trace 上下文的原生 SDK 参数。
     vite: ViteSettings  # 可选 Vite 开发服务器与代理参数。
-    client: ClientSettings  # 浏览器可见的请求、查询与组件主题参数。
     testing: TestingSettings  # 隔离验证资源、浏览器与执行预算。
 
     @model_validator(mode="after")

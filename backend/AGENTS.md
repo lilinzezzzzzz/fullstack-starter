@@ -44,7 +44,7 @@ uv run --directory backend pytest
 - 优先复用 `tests/helpers.py` 的 `settings_for` 和 `tests/conftest.py`；测试配置必须完整，数据库、日志与构建产物使用临时路径；服务测试必须从独立临时项目副本调用真实入口，隔离固定 `.run/`，不增加用于测试绕过项目单实例约束的配置或环境变量。
 - API/错误/静态回退、配置/日志、telemetry/traceparent、异步数据库、迁移、服务与项目创建各有对应 `test_*.py`，按实际影响选择，不用历史测试总数判断通过。
 - `integration` 测试启动自有本机进程，需要监听与信号权限；受限时可执行 `uv run --directory backend pytest -m 'not integration'`，但必须报告未执行真实启停，不能声称完整回归通过。
-- 改动导入、应用工厂或 telemetry 时，覆盖无数据库/无前端产物的导入及 OpenAPI 导出、冲突环境隔离和资源关闭；API 或公开配置 Schema 变化还需生成并检查前端类型。
+- 改动导入、应用工厂或 telemetry 时，覆盖无数据库/无前端产物的导入及 OpenAPI 导出、冲突环境隔离和资源关闭；OpenAPI Schema 变化还需生成并检查前端类型。
 
 ## 服务管理共同契约
 

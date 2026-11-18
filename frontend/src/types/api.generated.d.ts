@@ -38,42 +38,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** 客户端配置 */
-        ClientSettings: {
-            /**
-             * 写操作重试次数
-             * @constant
-             */
-            mutation_retry_attempts: 0;
-            /** 查询缓存保留时间（秒） */
-            query_cache_seconds: number;
-            /** 查询重试次数 */
-            query_retry_attempts: number;
-            /** 查询重试间隔（秒） */
-            query_retry_delay_seconds: number;
-            /** 查询数据保鲜时间（秒） */
-            query_stale_seconds: number;
-            /** 组件挂载时重新请求 */
-            refetch_on_mount: boolean;
-            /** 网络重连时重新请求 */
-            refetch_on_reconnect: boolean;
-            /** 窗口获得焦点时重新请求 */
-            refetch_on_window_focus: boolean;
-            /** 请求超时时间（秒） */
-            request_timeout_seconds: number;
-            /** 可重试的最小 HTTP 状态码 */
-            retry_min_status: number;
-            /** 网络错误时重试 */
-            retry_network_errors: boolean;
-            /** 主题圆角半径 */
-            theme_border_radius: number;
-            /** 主题字体族 */
-            theme_font_family: string;
-            /** 主题字号 */
-            theme_font_size: number;
-            /** 主题主色 */
-            theme_primary_color: string;
-        };
         /** 错误详情条目 */
         ErrorDetail: {
             /** 字段 */
