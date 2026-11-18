@@ -49,12 +49,8 @@ http-client.private.env.json
 # 项目约定所有 PyCharm 设置都只在本机使用时，可启用下面的规则。
 # .idea/
 
-# VS Code workspace 中可共享的配置
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
-!.vscode/launch.json
-!.vscode/tasks.json
+# VS Code 本机工作区配置
+.vscode/
 
 # 系统元数据
 .DS_Store
