@@ -14,7 +14,7 @@
 ## 配置、构建与生成文件
 
 - Node 版本遵循根 `.node-version`，pnpm 版本遵循 `package.json` 的 packageManager/engines；保留 `pnpm-lock.yaml`，不用 npm/yarn 替换。Vite 开发/构建、API 类型生成/检查和 E2E 需要已安装的后端环境；Prettier、ESLint 与 TypeScript 静态检查使用前端工具链。
-- `scripts/project-config.mjs` 调用 Python CLI 完整校验 TOML；Vite、Playwright 与类型工具共用该入口。不能增加 `VITE_*`、`import.meta.env` 或独立 TOML 解析作为应用参数来源。
+- Vite、Playwright 与类型工具获取 `configs/app.toml` 中的共享参数时复用 Python CLI。Vite 开发服务器使用 `scripts/vite-settings.mjs` 读取并校验 `configs/vite.toml` 中的前端专属参数，所有字段必填，拒绝未知键和隐式默认值。前端应用参数不得从 `VITE_*` 或 `import.meta.env` 注入。
 - `scripts/vite-settings.mjs` 从已校验的 TOML 只注入应用标题和版本；前端策略与样式由前端源码管理。
 - `src/types/api.generated.d.ts` 通过 `pnpm --dir frontend api:types` 生成；禁止手工编辑或用 Prettier 改写。`api:types:check` 发现过期应失败且不改写文件。
 - 构建输出路径与清空限制遵守 Python 路径校验；不绕过符号链接和源码保护。验证构建使用本次临时 TOML 与输出目录，不重建或清空日常 `frontend/dist/`。
@@ -30,6 +30,7 @@ pnpm --dir frontend format:check
 pnpm --dir frontend lint
 pnpm --dir frontend typecheck
 pnpm --dir frontend api:types:check
+pnpm --dir frontend test:config
 pnpm --dir frontend test:e2e
 ```
 

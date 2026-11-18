@@ -62,7 +62,7 @@ Uvicorn 参数固定在 [service.sh](entrypoints/service.sh)：127.0.0.1:18001�
 
 字段用途、单位、可选值和零值含义见 TOML 注释，定义与校验在 [backend/app/config.py](backend/app/config.py)。固定日志类属性和派生属性不属于 TOML 字段，不能通过添加同名键修改。
 
-后端、Vite 与测试工具共用 Python 校验器。TOML 只向浏览器提供应用标题和版本。请求与查询策略在 [frontend/src/config.ts](frontend/src/config.ts)，组件主题由前端 CSS 管理。生产产物需重新构建才能应用前端改动，详细边界见[配置约定](docs/configuration.md#前后端配置流)。
+后端、Vite 与测试工具通过 Python 校验共享配置；Vite 开发参数由前端工具链读取 [frontend/configs/vite.toml](frontend/configs/vite.toml) 并独立校验。TOML 只向浏览器提供应用标题和版本。请求与查询策略在 [frontend/src/config.ts](frontend/src/config.ts)，组件主题由前端 CSS 管理。生产产物需重新构建才能应用前端改动，详细边界见[配置约定](docs/configuration.md#前后端配置流)。
 
 普通运行时模块直接 from app.config import settings，在函数中读取配置；固定代理提前导入也不读取 TOML，telemetry 轻量入口仍在函数内延迟导入。CLI 和测试通过加载、getter 和绑定接口选择真实实例，不替换代理；运行期间配置不变。访问约定与导入边界见[配置说明](docs/configuration.md#python-配置访问)。
 
@@ -145,7 +145,7 @@ sh entrypoints/service.sh run
 pnpm --dir frontend dev
 ```
 
-随附配置访问 [http://127.0.0.1:5173/](http://127.0.0.1:5173/)。修改端口时同步 `vite.proxy_target` 与 `allowed_origins`；切回单服务模式时恢复 `serve_frontend = true`，重新构建并重启。
+随附配置访问 [http://127.0.0.1:5173/](http://127.0.0.1:5173/)。修改后端端口时同步 `frontend/configs/vite.toml` 的 `proxy_target`。修改任一访问端口时核对 `configs/app.toml` 的 `allowed_origins`。切回单服务模式时恢复 `serve_frontend = true`，重新构建并重启。
 
 ## 数据库与备份
 
@@ -182,10 +182,11 @@ uv run --directory backend pytest
 pnpm --dir frontend format:check
 pnpm --dir frontend lint
 pnpm --dir frontend typecheck
+pnpm --dir frontend test:config
 pnpm --dir frontend build
 ```
 
-按变更范围选择检查。Ruff 覆盖后端与项目创建器，`build` 包含 TypeScript 检查；Python 格式整理使用 `ruff format`，接口类型通过生成器维护。
+按变更范围选择检查。Ruff 覆盖后端与项目创建器，`build` 包含 TypeScript 检查；Python 格式整理使用 `ruff format`，接口类型通过生成器维护。`test:config` 使用 Node.js 测试 Vite TOML 的读取和校验。
 
 `pnpm --dir frontend format:check` 统一检查前端文件、根 README、`docs/` 下全部 Markdown 和各级 `AGENTS.md`，新增子目录自动纳入；`pnpm --dir frontend format` 整理相同范围。两者共用根 `.prettierrc.toml`，并读取根 `.prettierignore` 和 `.gitignore`，排除生成类型、锁文件、依赖、构建和私有运行产物。
 

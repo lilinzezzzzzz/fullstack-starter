@@ -18,8 +18,8 @@
 
 - 当前架构以 [docs/design.md](docs/design.md) 为依据；[README.md](README.md) 提供常用命令与文档入口，创建及数据库操作细节分别维护在 [docs/project-creation.md](docs/project-creation.md) 与 [docs/database.md](docs/database.md)，配置边界维护在 [docs/configuration.md](docs/configuration.md)，有日期的实测证据维护在 [docs/history.md](docs/history.md)。发现实现与约定不符时，说明差异，不能仅凭当前行为改写设计要求。
 - 默认由 FastAPI 托管构建后的前端，Vite 仅用于可选开发。不增加 Makefile、根目录前端工作区包或前后端统一进程管理器。
-- Uvicorn 启动参数固定在 service.sh，不读取 .env 或环境变量覆盖。后端与构建工具共用显式 configs/app.toml，另选文件使用 --config；所有字段及分组必填，拒绝未知字段，不从环境变量、旧 JSON、模型默认值或回退表达式补值，保留 0、false 和空列表。相对路径从项目根解析。
-- TOML 变更同步 Python 校验器、随附文件、配置文档和相关测试；构建工具复用同一 Python loader。TOML 只向浏览器提供应用标题和版本。请求与查询策略由前端 TypeScript 管理，组件主题由 CSS 管理，生产产物需重新构建才能应用前端改动。工具的 PATH、缓存和浏览器安装位置不属于应用配置来源。
+- Uvicorn 启动参数固定在 service.sh，不读取 .env 或环境变量覆盖。后端和构建工具共用的参数取自显式 configs/app.toml，另选文件使用 --config；所有字段及分组必填，拒绝未知字段，不从环境变量、旧 JSON、模型默认值或回退表达式补值，保留 0、false 和空列表。相对路径从项目根解析。
+- `configs/app.toml` 变更同步 Python 校验器、随附文件、配置文档和相关测试；构建工具复用同一 Python loader。Vite 开发服务器独立读取并校验 `frontend/configs/vite.toml`。TOML 只向浏览器提供应用标题和版本。请求与查询策略由前端 TypeScript 管理，组件主题由 CSS 管理，生产产物需重新构建才能应用前端改动。工具的 PATH、缓存和浏览器安装位置不属于应用配置来源。
 - API 成功体直接遵循响应 Schema；错误包含 `code`、`message`、`details`、`trace_id`。响应通过标准 `traceparent` 返回当前服务端上下文，不原样回显上游 span，不返回 `X-Trace-ID`。未知 API 和缺失资源返回真实 404，不落入 SPA HTML。
 - OpenAPI Schema 变更后，更新 `frontend/src/types/api.generated.d.ts`；通过生成器维护，禁止手改。生成和检查命令见前端指令与 README。
 - 数据库结构通过 Alembic 显式升级；导入应用和导出 OpenAPI 不连接数据库、不创建日志、不要求前端产物。启动检查交给 lifespan，不在启动时迁移或建表。

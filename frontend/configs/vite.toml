@@ -1,0 +1,10 @@
+# Vite 开发服务器配置。修改后重启 Vite。
+# 监听地址与端口。修改前端访问地址时，同步检查后端 allowed_origins。
+host = "127.0.0.1"
+port = 5173
+# /api 开发代理的后端 URL。修改后端服务端口时同步更新。
+proxy_target = "http://127.0.0.1:18001"
+# 端口占用时直接失败，避免 Vite 实际使用的端口与允许来源不一致。
+strict_port = true
+# 是否将代理请求的 Host 改为后端目标的主机。
+change_origin = true

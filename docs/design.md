@@ -101,11 +101,12 @@ fullstack-starter/
 │   ├── .npmrc
 │   ├── index.html / public/favicon.svg
 │   ├── vite.config.ts / tsconfig.json
+│   ├── configs/vite.toml             # 由前端读取并校验的开发服务器配置
 │   ├── eslint.config.js / playwright.config.ts
 │   ├── scripts/                      # 统一配置、构建、类型和 E2E 工具
 │   ├── src/
 │   │   ├── main.tsx / App.tsx / router.tsx
-│   │   ├── config.ts                 # 构建时注入的公开配置
+│   │   ├── config.ts                 # 请求与查询策略及构建时注入的应用标识
 │   │   ├── api/                      # HTTP 客户端、Hello 与健康检查
 │   │   ├── hooks/useWelcome.ts        # 查询、连通状态与重试
 │   │   ├── pages/                    # WelcomePage 及其 CSS Module
@@ -196,7 +197,7 @@ app/telemetry/ 的包入口只导出轻量 getter 和作用域，不提前加载
 
 ## 配置、访问与进程边界
 
-Uvicorn 启动参数固定在 service.sh：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker、并发不限，不读取 .env 或环境覆盖。后端与构建工具使用 configs/app.toml，通过 --config 另选；所有字段必填，保留严格校验、零值语义和路径保护，见[配置约定](configuration.md)。创建器只修改生成副本的端口常量，隔离测试只修改临时 Shell 的 host 和 port。
+Uvicorn 启动参数固定在 service.sh：127.0.0.1:18001、关闭期限10秒、Keep-Alive5秒、backlog2048、单worker、并发不限，不读取 .env 或环境覆盖。后端与构建工具使用 configs/app.toml 中的共享参数，通过 --config 另选；所有字段必填，保留严格校验、零值语义和路径保护。Vite 开发参数由前端独立读取和校验，见[配置约定](configuration.md#前后端配置流)。创建器同步生成副本的端口和代理，隔离测试只修改临时 Shell 的 host 和 port。
 
 service.sh 通过 entrypoints.cli 的 export-service-settings 获取 TOML 来源、日志和等待预算，自行计算固定地址、登记实例并 exec Uvicorn CLI。Shell 与 Uvicorn 的 PID/启动时间不变，不 eval 数据；entrypoints/api.py 只保留 create_app 导入和 app = create_app()，不再保留 service.py 或 create_service_app 包装。应用工厂读取 config.settings 构建应用，不初始化日志或登记实例；lifespan 先配置日志，再检查和管理运行资源，请求依赖的资源归属不变。
 

@@ -140,19 +140,6 @@ max_attribute_length = 0
 # span 字符串属性长度上限，字符数。
 max_span_attribute_length = 0
 
-[vite]
-# 可选 Vite 开发服务器；使用该模式时，后端 serve_frontend 可显式设为 false。
-# 可选 Vite 开发服务器的监听地址。
-host = "127.0.0.1"
-# Vite 开发端口，范围 1–65535，与 API 监听端口分别配置。
-port = 5173
-# /api 开发代理的后端 URL；修改 API 监听端口后需同步核对。
-proxy_target = "http://127.0.0.1:18001"
-# 端口占用时直接失败，禁止自动改用其他端口。
-strict_port = true
-# 是否将代理请求的 Host 改为后端目标的主机。
-change_origin = true
-
 [testing]
 # 隔离验证使用的资源与预算，禁止复用日常数据库、日志或前端产物。
 # 本节超时和退出等待期限须大于 0，仅 action_timeout_seconds 允许用 0 禁用单次操作超时。

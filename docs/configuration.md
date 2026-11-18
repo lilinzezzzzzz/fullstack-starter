@@ -2,7 +2,7 @@
 
 ## 结论与格式选择
 
-后端与构建工具的配置入口为 [configs/app.toml](../configs/app.toml)，当前有 80 个 TOML 叶子配置项，全部字段和分组必填，拒绝缺项、未知项、错误类型和无效数值。Uvicorn 参数固定在 Shell 代码中，不读取 .env，也不由环境变量或旧 JSON 补值。
+后端与构建工具的共享配置入口为 [configs/app.toml](../configs/app.toml)，当前有 75 个 TOML 叶子配置项，全部字段和分组必填，拒绝缺项、未知项、错误类型和无效数值。Uvicorn 参数固定在 Shell 代码中，不读取 .env，也不由环境变量或旧 JSON 补值。
 
 JSON 是可靠的机器交换格式，适合 API、生成数据和工具元信息。这里的配置主要由人维护，字段增加后需要分组和注释，因此选择 TOML。它不是对所有项目都最优，而是更适合当前 Python 主导、前后端同仓库的小型脚手架。[TOML 规范](https://toml.io/en/)
 
@@ -67,7 +67,6 @@ telemetry 包参与 app 导入时的环境清理，provider 与环境桥接函�
 | `logging`               | `directory`, `filename`, `level`, `format`, `rotation`, `retention_days`, `compression`, `serialize`, `console`, `request_logging`                                                                                                                                                                                                                                            | Loguru 文件、等级、格式、轮转、保留、压缩、序列化与访问日志           |
 | `telemetry`             | `tracing`, `metrics`, `logs`, `operation_spans`, `auto_configure`, `sampler`, `id_generator`, `sdk_disabled`, `internal_metrics_enabled`, `shutdown_on_exit`, `context`, `propagators`, `known_methods`                                                                                                                                                                       | 原生请求上下文、SDK 生命周期、传播协议与受控环境桥接                  |
 | `telemetry.span_limits` | `max_attributes`, `max_events`, `max_links`, `max_span_attributes`, `max_event_attributes`, `max_link_attributes`, `max_attribute_length`, `max_span_attribute_length`                                                                                                                                                                                                        | 显式传入全部八项 SDK SpanLimits；随附值均为 0                         |
-| `vite`                  | `host`, `port`, `proxy_target`, `strict_port`, `change_origin`                                                                                                                                                                                                                                                                                                                | 开发服务器地址、端口、严格端口策略和代理行为                          |
 | `testing`               | `temporary_directory`, `host`, `termination_grace_seconds`, `command_timeout_seconds`, `keep_artifacts`, `browser`, `viewport_width`, `viewport_height`, `mobile_width`, `mobile_height`, `workers`, `retries`, `test_timeout_seconds`, `expect_timeout_seconds`, `action_timeout_seconds`, `navigation_timeout_seconds`, `trace`, `screenshot`, `fully_parallel`, `reporter` | 临时目录、进程预算、浏览器、视口、并行度、重试、超时和诊断产物        |
 
 随附取值、单位和逐项说明见[主 TOML](../configs/app.toml)，字段类型、范围与跨字段约束由 [backend/app/config.py](../backend/app/config.py) 定义并执行校验，三者同步维护。TOML 中提供的数值是操作者选择的值，不是缺失时的默认值；注释不参与解析，也不产生额外配置项。
@@ -115,18 +114,21 @@ configs/app.toml ── Python tomllib + Pydantic 完整校验
        └── 本地构建工具的受控 JSON 交换
                     ├── Vite / Playwright
                     └── Vite 注入应用标题和版本
+frontend/configs/vite.toml ── 前端读取并校验 ── Vite 开发服务器
 前端 src/config.ts ── 请求与查询策略
 前端 CSS ── Semi Design 主题与组件样式
 ```
 
-Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默认值。构建前需要先安装后端依赖。浏览器包不包含数据目录、日志目录、完整服务设置或访问允许列表。
+Vite 和 Playwright 使用同一 Python 校验器读取共享参数，构建前需要先安装后端依赖。浏览器包不包含数据目录、日志目录、完整服务设置或访问允许列表。
 
-修改后端运行参数后重启服务。修改 `[vite]` 或应用标题、版本后，重启 Vite 开发服务器以重新读取 TOML。生产环境里的前端源码、样式和应用标识需要重新构建后才能生效。
+修改后端运行参数后重启服务。修改 Vite 开发配置或应用标题、版本后，重启 Vite 开发服务器。生产构建需重新执行才能应用前端源码、样式和应用标识的改动。
+
+[Vite 开发配置](../frontend/configs/vite.toml) 的 `host`、`port`、`proxy_target`、`strict_port` 和 `change_origin` 全部必填，拒绝未知字段。`port` 要求 1–65535 的整数，`proxy_target` 要求无凭据的 HTTP(S) URL，`strict_port` 固定为 `true`，`change_origin` 为布尔值。后端的 `allowed_hosts` 与 `allowed_origins` 继续由共享 TOML 校验，项目创建器负责同步生成副本中与端口相关的值。
 
 - [frontend/src/config.ts](../frontend/src/config.ts) 维护请求超时、查询缓存、重试与刷新策略，时长单位为秒，写操作重试固定为 0。
 - [全局样式](../frontend/src/styles/global.css) 定义 Semi Design 主色、交互色和小圆角。[连接状态样式](../frontend/src/components/ConnectionStatus.module.css) 定义 Hello 页检查按钮和错误提示正文的字号与字体。
 
-升级旧项目时，从所有使用中的 TOML 文件移除旧的 `[client]` 分组。自定义过的值依照上述位置迁到 TypeScript 与 CSS。保留旧分组会触发 TOML 未知字段错误。
+升级旧项目时，从所有使用中的后端 TOML 中移除旧的 `[vite]` 和 `[client]` 分组。`[vite]` 的五个字段以顶层键迁入 `frontend/configs/vite.toml`，旧 `[client]` 的自定义值迁到对应的 TypeScript 和 CSS。保留旧分组会触发 TOML 未知字段错误。
 
 ## 保留在代码中的固定契约
 

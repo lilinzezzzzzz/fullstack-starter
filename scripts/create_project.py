@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+VITE_CONFIG = Path("frontend/configs/vite.toml")
 
 
 def load_path_policy():
@@ -167,17 +168,6 @@ def validate_template_shape(settings: dict) -> None:
         and bool(application["title"]),
         "Template application.title must be a non-empty string",
     )
-    vite = settings.get("vite")
-    require(isinstance(vite, dict), "Template vite must be a table")
-    port = vite.get("port")
-    require(
-        type(port) is int and 1 <= port <= 65535,
-        "Template vite.port must be an integer from 1 to 65535",
-    )
-    require(
-        isinstance(vite.get("proxy_target"), str),
-        "Template vite.proxy_target must be a string",
-    )
     require(
         isinstance(settings.get("allowed_origins"), list)
         and all(isinstance(origin, str) for origin in settings["allowed_origins"]),
@@ -271,6 +261,7 @@ SOURCE_TREE_ROOTS = (
     "scripts",
     "frontend/src",
     "frontend/scripts",
+    "frontend/configs",
     "frontend/e2e",
     "frontend/public",
 )
@@ -377,12 +368,7 @@ def ignore_runtime_paths(target: Path, directories: list[Path]) -> None:
         )
 
 
-def update_documents(target: Path, name: str, settings: dict, vite_port: int, port: int) -> None:
-    old_title = settings["application"]["title"]
-    ports = {
-        read_service_port(): port,
-        settings["vite"]["port"]: vite_port,
-    }
+def update_documents(target: Path, name: str, old_title: str, ports: dict[int, int]) -> None:
     pattern = r"(?<!\d)(?:" + "|".join(map(str, ports)) + r")(?!\d)"
     for relative in ("README.md", "AGENTS.md", "docs/design.md", "docs/configuration.md"):
         path = target / relative
@@ -407,11 +393,22 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
     settings = read_toml(PROJECT_ROOT / "configs/app.toml")
     validate_template_shape(settings)
     validate_template_paths(settings)
+    try:
+        vite_text = (PROJECT_ROOT / VITE_CONFIG).read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValueError(f"Template is missing required files: {VITE_CONFIG}") from exc
+    vite = tomllib.loads(vite_text)
+    template_vite_port = vite.get("port")
+    if type(template_vite_port) is not int or not 1 <= template_vite_port <= 65535:
+        raise ValueError(f"Template {VITE_CONFIG} port must be an integer from 1 to 65535")
+    proxy_target = vite.get("proxy_target")
+    if not isinstance(proxy_target, str):
+        raise ValueError(f"Template {VITE_CONFIG} proxy_target must be a string")
     if vite_port is None:
-        vite_port = settings["vite"]["port"]
+        vite_port = template_vite_port
     if port == vite_port:
         raise ValueError("Backend and Vite ports must be different.")
-    if template_port == settings["vite"]["port"]:
+    if template_port == template_vite_port:
         raise ValueError("Template backend and Vite ports must be different.")
     if os.path.lexists(target):
         raise ValueError(f"Target already exists; nothing was overwritten: {target}")
@@ -435,16 +432,10 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
             settings["testing"]["temporary_directory"], "testing.temporary_directory"
         )
     changes = {field: path.as_posix() for field, path in paths.items()}
-    changes.update(
-        {
-            ("application", "title"): name,
-            ("vite", "port"): vite_port,
-            ("vite", "proxy_target"): with_port(settings["vite"]["proxy_target"], port),
-        }
-    )
+    changes[("application", "title")] = name
     origin_ports = {
         template_port: port,
-        settings["vite"]["port"]: vite_port,
+        template_vite_port: vite_port,
     }
     changes[("allowed_origins",)] = [
         with_port(origin, origin_ports[urlsplit(origin).port])
@@ -453,6 +444,10 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         for origin in settings["allowed_origins"]
     ]
     config = update_toml((PROJECT_ROOT / "configs/app.toml").read_text(encoding="utf-8"), changes)
+    vite_config = update_toml(
+        vite_text,
+        {("port",): vite_port, ("proxy_target",): with_port(proxy_target, port)},
+    )
 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.mkdir()
@@ -460,6 +455,7 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         copy_source(target, list(paths.values()))
         check_project_files(target)
         (target / "configs/app.toml").write_text(config, encoding="utf-8")
+        (target / VITE_CONFIG).write_text(vite_config, encoding="utf-8")
         service_entry = target / "entrypoints/service.sh"
         service_entry.write_text(
             re.sub(
@@ -489,7 +485,7 @@ def create_project(name: str, target: Path, port: int, vite_port: int | None) ->
         package = json.loads(package_path.read_text(encoding="utf-8"))
         package["name"] = f"{name}-frontend"
         package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + "\n")
-        update_documents(target, name, settings, vite_port, port)
+        update_documents(target, name, settings["application"]["title"], origin_ports)
         subprocess.run(
             ["uv", "lock", "--directory", str(target / "backend"), "--check", "--offline"],
             check=True,
@@ -522,7 +518,7 @@ def main() -> None:
     )
     parser.add_argument("--port", required=True, type=port_number, help="Backend HTTP port")
     parser.add_argument(
-        "--vite-port", type=port_number, help="Otherwise inherit vite.port from configs/app.toml"
+        "--vite-port", type=port_number, help=f"Otherwise inherit port from {VITE_CONFIG}"
     )
     args = parser.parse_args()
     try:

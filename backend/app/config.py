@@ -161,14 +161,6 @@ class TelemetrySettings(ConfigSection):
         return self
 
 
-class ViteSettings(ConfigSection):
-    host: str  # 可选 Vite 开发服务器的监听地址。
-    port: int = Field(ge=1, le=65535)  # Vite 开发端口，与 API 监听端口分别配置。
-    proxy_target: str  # /api 开发代理的后端 URL，例如 http://127.0.0.1:18001。
-    strict_port: Literal[True]  # 端口占用时直接失败，禁止自动改用其他端口。
-    change_origin: bool  # 是否将代理请求的 Host 改为后端目标的主机。
-
-
 class TestingSettings(ConfigSection):
     temporary_directory: ProjectPath  # E2E/迁移验证创建独占子目录的父位置，不复用日常产物。
     host: str  # 隔离 E2E 服务的监听及访问地址。
@@ -209,7 +201,6 @@ class Settings(ConfigSection):
     database: DatabaseSettings  # SQLite PRAGMA 与异步连接池参数。
     logging: LoggingSettings  # Loguru 文件、控制台及请求日志参数。
     telemetry: TelemetrySettings  # 仅维护 trace 上下文的原生 SDK 参数。
-    vite: ViteSettings  # 可选 Vite 开发服务器与代理参数。
     testing: TestingSettings  # 隔离验证资源、浏览器与执行预算。
 
     @model_validator(mode="after")

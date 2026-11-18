@@ -125,11 +125,12 @@ def test_local_access_boundaries(
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
-def test_vite_origin_is_allowed(client: TestClient, settings: Settings) -> None:
-    host = f"[{settings.vite.host}]" if ":" in settings.vite.host else settings.vite.host
-    origin = f"http://{host}:{settings.vite.port}"
-    response = client.get("/api/v1/hello", headers={"origin": origin})
-    assert response.status_code == 200
+def test_configured_cross_origin_is_allowed(settings: Settings) -> None:
+    origin = "http://127.0.0.1:5173"
+    settings.allowed_origins[:] = [origin]
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
+        response = client.get("/api/v1/hello", headers={"origin": origin})
+        assert response.status_code == 200
 
 
 def test_same_origin_is_allowed_on_custom_port(settings: Settings) -> None:

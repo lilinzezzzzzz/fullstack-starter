@@ -5,13 +5,6 @@ export function readProjectSettings(path: string): {
   frontend_clean_output: boolean;
   allowed_hosts: string[];
   application: { title: string; version: string };
-  vite: {
-    host: string;
-    port: number;
-    proxy_target: string;
-    strict_port: boolean;
-    change_origin: boolean;
-  };
   testing: {
     temporary_directory: string;
     host: string;

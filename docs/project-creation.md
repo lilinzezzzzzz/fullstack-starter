@@ -18,13 +18,13 @@ sh scripts/create-project.sh \
 
 也可以从其他工作目录使用脚本的绝对路径调用。`--target-dir` 是新项目的最终目录，不会再自动追加项目名；相对路径以调用时的工作目录解析。目录名可以与项目标识不同，含空格时加引号。
 
-| 参数           | 要求与含义                                                                    |
-| -------------- | ----------------------------------------------------------------------------- |
-| `--name`       | 必填；1–63 位小写英文字母、数字和连字符，以字母开头，连字符不能连续或位于末尾 |
-| `--target-dir` | 必填；最终目标目录，必须尚不存在且位于脚手架目录之外，缺失的父目录会创建      |
-| `--port`       | 必填；新项目后端端口，范围 1–65535                                            |
-| `--vite-port`  | 可选；省略时继承模板 `configs/app.toml` 的 `vite.port`，必须与后端端口不同    |
-| `--help`       | 查看参数说明                                                                  |
+| 参数           | 要求与含义                                                                      |
+| -------------- | ------------------------------------------------------------------------------- |
+| `--name`       | 必填；1–63 位小写英文字母、数字和连字符，以字母开头，连字符不能连续或位于末尾   |
+| `--target-dir` | 必填；最终目标目录，必须尚不存在且位于脚手架目录之外，缺失的父目录会创建        |
+| `--port`       | 必填；新项目后端端口，范围 1–65535                                              |
+| `--vite-port`  | 可选；省略时继承模板 `frontend/configs/vite.toml` 的 `port`，必须与后端端口不同 |
+| `--help`       | 查看参数说明                                                                    |
 
 脚本校验参数和目标目录；端口是否已被占用在服务实际启动时检查，不预留端口或处理占用端口的进程。
 
@@ -34,7 +34,7 @@ sh scripts/create-project.sh \
 - 额外排除 TOML 指定的实际运行路径，并将新项目的运行路径补入副本 `.gitignore`，支持模板内的自定义目录。数据、备份、日志和前端输出路径必须在模板目录内；内部绝对路径会改为相对路径，避免指向原项目。模板外的这些路径会明确报错，需先调整模板配置。
 - 复制前复用应用的源码路径保护规则，并校验创建所需的关键字段；复制后按源文件树检查 API、路由、服务、迁移、sh 脚本、前端入口和项目元信息；缺少文件时创建失败，不报告成功。
 - 将后端项目名改为 `my-app-backend`，前端包名改为 `my-app-frontend`，应用标题改为 `my-app`。
-- --port 重写生成副本 service.sh 的 server_port 整数常量；同步 TOML 的 Vite 端口、代理目标和允许来源。其余应用配置完整继承模板，保留 TOML 注释，不读取环境变量或补齐缺失配置。
+- `--port` 重写生成副本 service.sh 的 server_port 整数常量，并同步 `frontend/configs/vite.toml` 的 `port` 和 `proxy_target`，以及 `configs/app.toml` 中对应的 `allowed_origins`。其余配置继承模板，保留 TOML 注释。
 - 只更新 `uv.lock` 中本地虚拟项目的名称，并用 `uv lock --check --offline` 校验；第三方依赖版本、哈希和前端锁文件保持不变，创建时无需重新解析依赖源。
 - 更新新项目 README、设计文档中的项目名称和端口，为继承的验证记录注明来源。应用标题与版本作为元信息注入前端；Hello API 和页面欢迎语仍为固定示例，不随项目名称变化。
 
@@ -42,7 +42,7 @@ sh scripts/create-project.sh \
 
 目标目录已存在（包括文件或符号链接）时直接拒绝覆盖；复制或配置调整失败时，清理本次新建的目标目录。sh 入口调用 [scripts/create_project.py](../scripts/create_project.py) 处理结构化数据，仅依赖 Python 标准库和 rsync。
 
-创建器校验路径、源文件完整性，以及创建过程依赖的关键字段。由于它不引入应用依赖，完整 Pydantic 字段、枚举和跨字段校验由生成项目的 `export-settings`、测试或首次启动完成；创建器不会把明显无效的模板配置包装成成功项目。
+创建器校验路径、源文件完整性，以及创建过程依赖的关键字段。生成项目的 `export-settings`、测试或首次启动执行完整的 Python 配置校验。Vite 开发配置的完整校验在生成项目执行 `pnpm --dir frontend dev` 时完成。
 
 根 entrypoints/service.sh 与后端 api.py、cli.py、`entrypoints/__init__.py`、app/application.py、app/telemetry/adapter.py、app/utils/lazy_proxy.py 等文件必需，不再需要 service.py 或 service_control.py。配置代理工具或 telemetry 适配文件缺失时创建失败；它们与其他源码一起复制，不依赖外部项目。服务装配集中在 application.py，Shell 所需配置由 cli.py 的 export-service-settings 导出。根 entrypoints 只允许普通 service.sh，其他文件或子目录会导致生成失败；复制仍排除旧 backend/entrypoints/service.sh。运行需要 jq、ps、stat、lsof、curl、nohup 等本机工具，源树检查不代替运行验证。
 

@@ -401,15 +401,16 @@ def test_zero_and_false_are_explicit_values_not_missing_values(tmp_path: Path) -
     assert settings.logging.request_logging is False
 
 
-def test_old_client_section_is_rejected(tmp_path: Path) -> None:
+@pytest.mark.parametrize("section", ["client", "vite"])
+def test_old_frontend_sections_are_rejected(tmp_path: Path, section: str) -> None:
     path = write_config(tmp_path)
     data = read_config(path)
-    data["client"] = {"request_timeout_seconds": 10.0}
+    data[section] = {}
     save_config(path, data)
     with pytest.raises(ValidationError) as error:
         load_settings(path)
     assert any(
-        item["loc"] == ("client",) and item["type"] == "extra_forbidden"
+        item["loc"] == (section,) and item["type"] == "extra_forbidden"
         for item in error.value.errors()
     )
 

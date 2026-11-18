@@ -41,6 +41,7 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
         ".prettierrc.toml",
         ".prettierignore",
         "configs/app.toml",
+        "frontend/configs/vite.toml",
         "backend/pyproject.toml",
         "backend/uv.lock",
         "frontend/package.json",
@@ -60,10 +61,11 @@ def test_create_project_is_clean_independent_and_keeps_locked_dependencies(tmp_p
     assert "server_port=18123" in (target / "entrypoints/service.sh").read_text()
     assert not (target / ".env").exists()
     assert not (target / ".env.example").exists()
-    assert settings["vite"]["port"] == 5182
-    assert settings["vite"]["proxy_target"] == "http://127.0.0.1:18123"
-    assert "http://127.0.0.1:5182" in settings["allowed_origins"]
-    assert "http://localhost:18123" in settings["allowed_origins"]
+    assert "vite" not in settings
+    vite = tomllib.loads((target / "frontend/configs/vite.toml").read_text())
+    expected_vite = tomllib.loads(before["frontend/configs/vite.toml"].decode())
+    expected_vite.update(port=5182, proxy_target="http://127.0.0.1:18123")
+    assert vite == expected_vite
     assert Path(settings["data_dir"]) == target.resolve() / ".data"
     assert Path(settings["backup_directory"]) == target.resolve() / ".data/backups"
     assert Path(settings["logging"]["directory"]) == target.resolve() / "logs"
@@ -282,9 +284,17 @@ def test_reusing_generated_project_excludes_custom_paths_and_rebases_absolute_pa
     assert result.returncode == 0, result.stderr
     with (first / "configs/app.toml").open("rb") as handle:
         config = tomllib.load(handle)
-    with (PROJECT_ROOT / "configs/app.toml").open("rb") as handle:
-        source = tomllib.load(handle)
-    assert config["vite"]["port"] == source["vite"]["port"]
+    vite = tomllib.loads((first / "frontend/configs/vite.toml").read_text())
+    source_vite = tomllib.loads((PROJECT_ROOT / "frontend/configs/vite.toml").read_text())
+    assert vite["port"] == source_vite["port"]
+    port = vite["port"]
+    config["allowed_origins"] = [
+        "http://127.0.0.1:18123",
+        "http://localhost:18123",
+        f"http://127.0.0.1:{port}",
+        f"http://localhost:{port}",
+        "https://example.test",
+    ]
     for field, directory in (
         ("data_dir", "custom/storage"),
         ("backup_directory", "custom/snapshots"),
@@ -300,7 +310,6 @@ def test_reusing_generated_project_excludes_custom_paths_and_rebases_absolute_pa
     (first / "custom/storage/app.sqlite3.lock").touch()
     (first / "configs/app.toml").write_text(tomli_w.dumps(config))
     second = tmp_path / "second"
-    port = config["vite"]["port"]
     result = run_creator(
         first / "scripts/create-project.sh",
         tmp_path,
@@ -308,6 +317,16 @@ def test_reusing_generated_project_excludes_custom_paths_and_rebases_absolute_pa
     )
     assert result.returncode == 0, result.stdout + result.stderr
     settings = exported_settings(second)
+    copied_vite = tomllib.loads((second / "frontend/configs/vite.toml").read_text())
+    assert copied_vite["port"] == port + 1
+    assert copied_vite["proxy_target"] == f"http://127.0.0.1:{port}"
+    assert settings["allowed_origins"] == [
+        f"http://127.0.0.1:{port}",
+        f"http://localhost:{port}",
+        f"http://127.0.0.1:{port + 1}",
+        f"http://localhost:{port + 1}",
+        "https://example.test",
+    ]
     assert Path(settings["data_dir"]) == second.resolve() / "custom/storage"
     assert not list(second.rglob("private"))
     assert not (second / "custom/storage/app.sqlite3.lock").exists()
@@ -499,6 +518,7 @@ def test_creator_rejects_missing_entrypoint_and_removes_only_new_target(tmp_path
         "backend/entrypoints/cli.py",
         "entrypoints/service.sh",
         "backend/entrypoints/api.py",
+        "frontend/configs/vite.toml",
     ],
 )
 def test_creator_rejects_missing_required_source_without_changing_template_data(
