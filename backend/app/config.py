@@ -182,10 +182,10 @@ class ClientSettings(ConfigSection):
     refetch_on_mount: bool  # 查询组件挂载时，是否重新请求过期查询。
     refetch_on_reconnect: bool  # 网络恢复连接时，是否重新请求过期查询。
     mutation_retry_attempts: Literal[0]  # 固定禁用写操作重试，避免未建立幂等契约时重复写入。
-    theme_primary_color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")  # Ant Design 六位十六进制主色。
-    theme_border_radius: int = Field(ge=0)  # Ant Design 组件基础圆角，像素。
-    theme_font_size: int = Field(gt=0)  # Ant Design 组件基础字号，像素。
-    theme_font_family: str = Field(min_length=1)  # Ant Design 组件字体，不覆盖全局 CSS 字体。
+    theme_primary_color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")  # Semi Design 六位十六进制主色。
+    theme_border_radius: int = Field(ge=0)  # Semi Design 小圆角，像素。
+    theme_font_size: int = Field(gt=0)  # Hello 页检查按钮和错误提示字号，像素。
+    theme_font_family: str = Field(min_length=1)  # Hello 页检查按钮和错误提示字体。
 
 
 class TestingSettings(ConfigSection):

@@ -122,7 +122,7 @@ Vite 和 Playwright 使用同一配置校验器，不各自猜测字段或填默
 
 后端参数修改后重启；前端运行参数和组件主题在构建时注入，修改后重新构建再刷新。Vite 开发模式重新启动开发服务器即可读取新值。
 
-`client.theme_*` 的范围是 Ant Design 组件。Hello 页面的品牌色、全局字体、页面排版和 CSS Modules 圆角属于固定视觉设计，不跟随组件主题参数；需要整体换肤时，应同步调整页面样式。
+`client.theme_primary_color` 设置 Semi Design 主色及其交互状态，`client.theme_border_radius` 设置 Semi 的小圆角变量，供按钮、标签和行内提示等组件使用。`client.theme_font_size` 与 `client.theme_font_family` 用于 Hello 页的重新检查按钮与错误提示正文。页面品牌和布局由页面样式定义。
 
 ## 保留在代码中的固定契约
 

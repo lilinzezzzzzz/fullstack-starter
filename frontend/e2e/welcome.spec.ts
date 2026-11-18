@@ -8,6 +8,7 @@ test('single FastAPI service serves Hello, assets and client-side navigation', a
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Hello, world.');
+  await expect(page.getByRole('list', { name: '技术栈' })).toContainText('Semi Design');
   await expect(page.getByText('前后端已连通')).toBeVisible();
   await expect(page.getByText('Hello World', { exact: true })).toBeVisible();
   await page.goto('/welcome');
@@ -60,7 +61,11 @@ test('welcome stays available while API connection is loading', async ({ page })
   await page.goto('/');
   try {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByText('正在检查连接…')).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('正在检查连接…');
+    await expect(page.getByRole('button', { name: '重新检查' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
   } finally {
     release();
   }
@@ -80,6 +85,7 @@ test('narrow screen has no horizontal overflow and supports keyboard retry', asy
   await page.keyboard.press('Enter');
   expect((await response).status()).toBe(200);
   await expect(page.getByText('前后端已连通')).toBeVisible();
+  await expect(retry).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

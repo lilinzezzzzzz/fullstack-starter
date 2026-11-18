@@ -1,7 +1,10 @@
+import Tag from '@douyinfe/semi-ui/lib/es/tag';
 import ConnectionStatus from '../components/ConnectionStatus';
 import { useWelcome } from '../hooks/useWelcome';
 import styles from './WelcomePage.module.css';
 import { applicationInfo } from '../config';
+
+const stack = ['FastAPI', 'React', 'SQLite', 'Semi Design'];
 
 export default function WelcomePage() {
   const connection = useWelcome();
@@ -12,7 +15,7 @@ export default function WelcomePage() {
           ›_
         </span>
         <span>{applicationInfo.title}</span>
-        <span className={styles.version}>v{applicationInfo.version}</span>
+        <Tag className={styles.version}>v{applicationInfo.version}</Tag>
       </header>
       <main className={styles.main}>
         <section className={styles.welcome} aria-labelledby="welcome-heading">
@@ -22,9 +25,11 @@ export default function WelcomePage() {
           </h1>
           <p className={styles.intro}>一个简洁的起点，开始构建你的下一个应用。</p>
           <ul className={styles.stack} aria-label="技术栈">
-            <li>FastAPI</li>
-            <li>React</li>
-            <li>SQLite</li>
+            {stack.map((name) => (
+              <li key={name}>
+                <Tag size="large">{name}</Tag>
+              </li>
+            ))}
           </ul>
           <ConnectionStatus
             pending={connection.isPending}

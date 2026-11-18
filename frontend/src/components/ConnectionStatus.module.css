@@ -4,22 +4,19 @@
   max-inline-size: 620px;
 }
 
-.summary {
-  display: flex;
-  align-items: baseline;
-  gap: 0.7rem;
-}
-
-.summary strong {
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
 .summary p {
   margin-block: 0.5rem 1.25rem;
   color: #6b766d;
   line-height: 1.6;
   font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.actions .retry,
+.errorMessage {
+  font-family: var(--app-component-font-family);
+  font-size: var(--app-component-font-size);
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
@@ -31,9 +28,17 @@
   margin-block-start: 1rem;
 }
 
-.actions :global(.ant-btn) {
+.actions .retry {
+  block-size: auto;
   min-block-size: 48px;
+  max-inline-size: 100%;
   padding-inline: 1.25rem;
+  white-space: normal;
+}
+
+.actions .retry:focus-visible {
+  outline: 3px solid var(--semi-color-primary);
+  outline-offset: 3px;
 }
 
 .actions a {

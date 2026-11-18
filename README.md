@@ -15,7 +15,7 @@
 ## 技术栈
 
 - 后端：Python、uv、FastAPI、Pydantic v2、SQLAlchemy 2.0 async、aiosqlite、SQLite、Alembic、Loguru。
-- 前端：Node.js、pnpm、React、TypeScript、Vite、React Router、TanStack Query、Ant Design、CSS Modules。
+- 前端：Node.js、pnpm、React、TypeScript、Vite、React Router、TanStack Query、[Semi Design](https://github.com/DouyinFE/semi-design)、CSS Modules。
 - 检查：Ruff、pytest、ESLint、Prettier、TypeScript、Playwright Chromium。
 
 Python 与 Node.js 版本分别见 `backend/.python-version`、`.node-version`，pnpm 版本见 `frontend/package.json`；依赖由各自锁文件固定。已有 mise 和 Corepack 时，可用 `mise exec node@24.22.0 -- corepack pnpm@9.12.2 --dir frontend ...` 显式选择随附版本；调整工具版本后同步核对上述声明。

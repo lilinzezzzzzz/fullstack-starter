@@ -24,7 +24,7 @@
 | 日志        | Loguru，统一应用、请求和 Uvicorn 文件日志                       |
 | 前端工具链  | Node.js、pnpm、Vite、TypeScript                                 |
 | 页面与请求  | React、React Router、原生 fetch、TanStack Query                 |
-| UI          | Ant Design、CSS Modules；局部状态就地管理                       |
+| UI          | Semi Design 组件与图标、CSS Modules；局部状态就地管理           |
 | 接口类型    | openapi-typescript，从后端 OpenAPI 生成 TypeScript              |
 | 质量检查    | Ruff、pytest、ESLint、Prettier、TypeScript、Playwright Chromium |
 

@@ -155,7 +155,7 @@ change_origin = true
 
 [client]
 # 只有本节与 application 的标题、版本进入浏览器构建产物，修改后需重新构建。
-# theme_* 仅影响 Ant Design 组件，不覆盖页面品牌、全局 CSS 字体或布局。
+# theme_* 用于 Semi Design 组件，具体范围见 docs/configuration.md。
 # 单次 API 请求超时，秒，必须大于 0。
 request_timeout_seconds = 10.0
 # 查询保持新鲜的秒数；0 表示立即过期。
@@ -178,13 +178,13 @@ refetch_on_mount = true
 refetch_on_reconnect = true
 # 固定禁用写操作重试，避免未建立幂等契约时重复写入。
 mutation_retry_attempts = 0
-# Ant Design 组件六位十六进制主色，例如 #14675b，不控制页面全部视觉样式。
+# Semi Design 主色，六位十六进制，例如 #14675b。
 theme_primary_color = "#14675b"
-# Ant Design 组件基础圆角，非负像素值。
+# Semi Design 小圆角，非负像素值。
 theme_border_radius = 10
-# Ant Design 组件基础字号，像素，必须大于 0。
+# Hello 页检查按钮与错误提示正文的字号，正像素值。
 theme_font_size = 16
-# 非空的 Ant Design 组件字体，不覆盖全局 CSS 字体。
+# Hello 页检查按钮与错误提示正文的字体，非空 CSS font-family 值。
 theme_font_family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 
 [testing]

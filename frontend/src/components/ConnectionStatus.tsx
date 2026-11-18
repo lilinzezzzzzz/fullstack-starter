@@ -1,4 +1,7 @@
-import { Alert, Badge, Button } from 'antd';
+import { IconRefresh } from '@douyinfe/semi-icons';
+import Banner from '@douyinfe/semi-ui/lib/es/banner';
+import Button from '@douyinfe/semi-ui/lib/es/button';
+import Tag, { type TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import styles from './ConnectionStatus.module.css';
 
 type Props = {
@@ -10,24 +13,44 @@ type Props = {
 };
 
 export default function ConnectionStatus({ pending, checking, error, message, onRetry }: Props) {
+  const status: { color: TagColor; text: string } =
+    pending || checking
+      ? { color: 'blue', text: '正在检查连接…' }
+      : error
+        ? { color: 'red', text: '连接检查失败' }
+        : { color: 'green', text: '前后端已连通' };
+
   return (
-    <section className={styles.connection} aria-label="服务连接" aria-busy={checking}>
+    <section className={styles.connection} aria-label="服务连接">
       <div className={styles.summary} role="status" aria-live="polite">
-        <Badge status={checking ? 'processing' : error ? 'error' : 'success'} />
-        <div>
-          <strong>
-            {checking || pending ? '正在检查连接…' : error ? '连接检查失败' : '前后端已连通'}
-          </strong>
-          <p>
-            {error
-              ? '欢迎页已准备好，后端连接需要再检查一下。'
-              : (message ?? '正在向本地服务打个招呼。')}
-          </p>
-        </div>
+        <Tag size="large" color={status.color}>
+          {status.text}
+        </Tag>
+        <p>
+          {error
+            ? '欢迎页已准备好，后端连接需要再检查一下。'
+            : (message ?? '正在向本地服务打个招呼。')}
+        </p>
       </div>
-      {error && <Alert title={error.message} type="error" showIcon />}
+      {error && (
+        <Banner
+          type="danger"
+          fullMode={false}
+          closeIcon={null}
+          description={<span className={styles.errorMessage}>{error.message}</span>}
+        />
+      )}
       <div className={styles.actions}>
-        <Button type="primary" size="large" loading={checking} onClick={onRetry}>
+        <Button
+          className={styles.retry}
+          theme="solid"
+          type="primary"
+          size="large"
+          icon={<IconRefresh aria-hidden="true" />}
+          loading={checking}
+          aria-busy={checking}
+          onClick={checking ? undefined : onRetry}
+        >
           {error ? '重试连接' : '重新检查'}
         </Button>
         <a href="/api/v1/hello" target="_blank" rel="noreferrer">

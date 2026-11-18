@@ -4,11 +4,12 @@
 
 ## 页面与客户端
 
-- 沿用 React、TypeScript、React Router、TanStack Query、Ant Design 与 CSS Modules。页面放 `src/pages/`，可复用组件放 `src/components/`，HTTP 边界放 `src/api/`，查询编排放 `src/hooks/`；局部状态就地维护，不为 Hello 示例增加通用状态框架。
+- 沿用 React、TypeScript、React Router、TanStack Query、Semi Design 与 CSS Modules。新增通用 UI 优先复用 `@douyinfe/semi-ui` 组件，图标使用 `@douyinfe/semi-icons`，页面布局与局部样式使用 CSS Modules。页面放 `src/pages/`，可复用组件放 `src/components/`，HTTP 边界放 `src/api/`，查询编排放 `src/hooks/`；局部状态就地维护。
+- 在 `src/main.tsx` 首先导入 Semi 的 React 19 适配器，并加载基础样式。UI 组件使用 `@douyinfe/semi-ui/lib/es/<组件>` 的包导出，减少构建引入的模块。中文 locale 由 `src/App.tsx` 的 `ConfigProvider` 提供，组件主题的范围见[配置约定](../docs/configuration.md#前后端配置流)。
 - Hello 页同时验证真实 Hello API 与数据库健康检查，保留加载、成功、错误与重试状态；不通过静态假数据掩盖连接失败。
 - 请求复用 `src/api/client.ts`，保留 AbortSignal 传播、超时与调用方取消的区分、定时器和监听器清理。TanStack Query 的 signal 传至实际请求；重试与缓存取显式客户端配置，写请求重试次数固定约束为 0。
 - 错误从标准错误体读取 `message`、`code`、`trace_id`；不依赖 `X-Trace-ID`。编译期类型断言不能替代运行时错误处理。
-- 保留语义化交互、键盘焦点、窄屏布局与无横向溢出；修改状态呈现或交互后更新相关页面测试。Ant Design 主题参数只作用于组件，页面品牌与全局 CSS 不会自动随之换肤。
+- 保留语义化交互、键盘焦点、窄屏布局与无横向溢出；修改状态呈现或交互后更新相关页面测试。
 
 ## 配置、构建与生成文件
 
